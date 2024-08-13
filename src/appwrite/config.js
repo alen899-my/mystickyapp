@@ -1,10 +1,8 @@
-import { Client, Databases } from "appwrite";
+import { Client } from "appwrite";
 
 const client = new Client()
   .setEndpoint(import.meta.env.VITE_ENDPOINT)
   .setProject(import.meta.env.VITE_PROJECT_ID);
-
-const databases = new Databases(client, 'no-cors');
 
 const collections = [
   {
@@ -14,4 +12,22 @@ const collections = [
   },
 ];
 
-export { client, databases, collections };
+const fetchAppwriteData = async () => {
+  try {
+    const response = await fetch(`https://cloud.appwrite.io/v1/databases/${collections[0].dbId}/collections/${collections[0].id}/documents`, {
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${client.getJWT()}`,
+      },
+    });
+    const data = await response.json();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+fetchAppwriteData();
+
+export { client, collections };
