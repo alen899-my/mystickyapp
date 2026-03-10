@@ -86,22 +86,31 @@ textarea:focus {
   gap: 5px;
 }
 #controls {
-  display: flex;
-  flex-direction: column;
-  gap: 1em;
-  align-items: center;
-  position: fixed;
-  left: 1em;
-  top: 50%;
-  transform: translateY(-50%);
-  background-color: #35363e;
-  padding: 1em 1em;
-  border-radius: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+    align-items: center;
+    position: fixed;
+    left: 1em;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: #35363e;
+    padding: 1em;
+    border-radius: 40px;
+    z-index: 10000;
+    box-shadow: 0 1px 1px hsl(0deg 0% 0% / 0.075),
+        0 2px 2px hsl(0deg 0% 0% / 0.075), 0 4px 4px hsl(0deg 0% 0% / 0.075),
+        0 8px 8px hsl(0deg 0% 0% / 0.075), 0 16px 16px hsl(0deg 0% 0% / 0.075);
 
-  box-shadow: 0 1px 1px hsl(0deg 0% 0% / 0.075), 0 2px 2px hsl(0deg 0% 0% /
-                  0.075), 0 4px 4px hsl(0deg 0% 0% / 0.075), 0 8px 8px hsl(0deg
-                  0% 0% / 0.075), 0 16px 16px hsl(0deg 0% 0% / 0.075);
-  z-index: 10000;
+    /* --- ADD THESE LINES --- */
+    max-height: 80vh;           /* Limits the height so it doesn't leave the screen */
+    overflow-y: auto;           /* Adds the vertical scrollbar when needed */
+    scrollbar-width: none;      /* Hides scrollbar in Firefox */
+}
+
+/* Optional: Hides scrollbar in Chrome/Safari for a cleaner look */
+#controls::-webkit-scrollbar {
+    display: none;
 }
 
 #add-btn {
