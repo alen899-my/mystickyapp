@@ -22,5 +22,77 @@
         "colorHeader": "#FED0FD",
         "colorBody": "#FEE5FD",
         "colorText": "#18181A"
+    },
+    {
+        "id": "color-red",
+        "colorHeader": "#FFB3BA",
+        "colorBody": "#FFDFE1",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-orange",
+        "colorHeader": "#FFD1A1",
+        "colorBody": "#FFE8D1",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-lime",
+        "colorHeader": "#E1F1A7",
+        "colorBody": "#F0F9D1",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-teal",
+        "colorHeader": "#A7F1E1",
+        "colorBody": "#D1F9F0",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-cyan",
+        "colorHeader": "#A7E1F1",
+        "colorBody": "#D1F0F9",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-indigo",
+        "colorHeader": "#A7A7F1",
+        "colorBody": "#D1D1F9",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-violet",
+        "colorHeader": "#E1A7F1",
+        "colorBody": "#F0D1F9",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-fuchsia",
+        "colorHeader": "#F1A7E1",
+        "colorBody": "#F9D1F0",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-rose",
+        "colorHeader": "#F1A7B3",
+        "colorBody": "#F9D1D8",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-slate",
+        "colorHeader": "#CBD5E1",
+        "colorBody": "#F1F5F9",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-amber",
+        "colorHeader": "#FCD34D",
+        "colorBody": "#FEF3C7",
+        "colorText": "#18181A"
+    },
+    {
+        "id": "color-emerald",
+        "colorHeader": "#6EE7B7",
+        "colorBody": "#D1FAE5",
+        "colorText": "#18181A"
     }
 ]
