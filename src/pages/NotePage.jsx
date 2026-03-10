@@ -23,6 +23,10 @@ const NotesPage = () => {
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
 
+    // Pinch-to-zoom state (mobile)
+    const lastPinchDistRef = useRef(null);
+    const lastPinchMidRef = useRef(null);
+
     // Sync URL to Context
     useEffect(() => {
         if (id) {
@@ -68,12 +72,21 @@ const NotesPage = () => {
             }
         };
 
+        const handleNativeTouchMove = (e) => {
+            if (e.touches.length >= 2) {
+                e.preventDefault();
+            }
+        };
+
         const page = notesPageRef.current;
         if (page) {
             page.addEventListener('wheel', handleZoom, { passive: false });
+            // Non-passive touchmove so e.preventDefault() can block native pinch-zoom
+            page.addEventListener('touchmove', handleNativeTouchMove, { passive: false });
         }
         return () => {
             if (page) page.removeEventListener('wheel', handleZoom);
+            if (page) page.removeEventListener('touchmove', handleNativeTouchMove);
         };
     }, [setZoom, setCanvasOffset]);
 
@@ -94,8 +107,21 @@ const NotesPage = () => {
         setIsDragging(false);
     };
 
+    const getTouchDist = (t1, t2) =>
+        Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+
+    const getTouchMid = (t1, t2) => ({
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2,
+    });
+
     const handleTouchStart = (e) => {
-        if (e.touches.length === 1 && (e.target.classList.contains("notes-page") || e.target.classList.contains("grid-background") || e.target.classList.contains("canvas"))) {
+        if (e.touches.length === 2) {
+            // Begin pinch — cancel any pan
+            setIsDragging(false);
+            lastPinchDistRef.current = getTouchDist(e.touches[0], e.touches[1]);
+            lastPinchMidRef.current = getTouchMid(e.touches[0], e.touches[1]);
+        } else if (e.touches.length === 1 && (e.target.classList.contains("notes-page") || e.target.classList.contains("grid-background") || e.target.classList.contains("canvas"))) {
             setIsDragging(true);
             const touch = e.touches[0];
             setStartPos({ x: touch.clientX - canvasOffset.x, y: touch.clientY - canvasOffset.y });
@@ -103,9 +129,53 @@ const NotesPage = () => {
     };
 
     const handleTouchMove = (e) => {
-        if (isDragging && e.touches.length === 1) {
+        if (e.touches.length === 2) {
+            // Pinch-to-zoom
+            e.preventDefault();
+            const newDist = getTouchDist(e.touches[0], e.touches[1]);
+            const newMid = getTouchMid(e.touches[0], e.touches[1]);
+            const prevDist = lastPinchDistRef.current;
+
+            if (prevDist && prevDist > 0) {
+                const zoomFactor = newDist / prevDist;
+
+                setZoom(prevZoom => {
+                    const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
+
+                    setCanvasOffset(prevOffset => {
+                        const rect = notesPageRef.current.getBoundingClientRect();
+                        const midX = newMid.x - rect.left;
+                        const midY = newMid.y - rect.top;
+
+                        // Anchor zoom to the midpoint between the two fingers
+                        const canvasMidX = (midX - prevOffset.x) / prevZoom;
+                        const canvasMidY = (midY - prevOffset.y) / prevZoom;
+
+                        return {
+                            x: midX - canvasMidX * nextZoom,
+                            y: midY - canvasMidY * nextZoom,
+                        };
+                    });
+
+                    return nextZoom;
+                });
+            }
+
+            lastPinchDistRef.current = newDist;
+            lastPinchMidRef.current = newMid;
+        } else if (isDragging && e.touches.length === 1) {
             const touch = e.touches[0];
             setCanvasOffset({ x: touch.clientX - startPos.x, y: touch.clientY - startPos.y });
+        }
+    };
+
+    const handleTouchEnd = (e) => {
+        if (e.touches.length < 2) {
+            lastPinchDistRef.current = null;
+            lastPinchMidRef.current = null;
+        }
+        if (e.touches.length === 0) {
+            setIsDragging(false);
         }
     };
 
@@ -221,7 +291,7 @@ const NotesPage = () => {
             onMouseLeave={handleMouseUp}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
-            onTouchEnd={handleMouseUp}
+            onTouchEnd={handleTouchEnd}
             style={{ 
                 width: "100vw", 
                 height: "100vh", 
