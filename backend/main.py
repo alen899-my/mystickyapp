@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 import uvicorn
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from database.db import engine, get_db, Base
 from models.models import User, Note, Notebook
@@ -21,9 +24,17 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+# CORS — read allowed origins from env var (comma-separated)
+# e.g. ALLOWED_ORIGINS="https://mystickyapp.vercel.app,http://localhost:5173"
+_raw_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:5174,http://localhost:3000"
+)
+ALLOWED_ORIGINS = [o.strip().rstrip("/") for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
