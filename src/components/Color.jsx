@@ -1,9 +1,9 @@
 import React from "react";
 import { useContext } from "react";
 import { NoteContext } from "../context/NotesContext";
-import { db } from "../appwrite/databases";
+import { db } from "../utils/db";
 
-const Color = ({ color }) => {
+const Color = ({ color, onSelect }) => {
     // 1. Add 'notes' and 'setNotes' to the context destructuring
     const { selectedNote, notes, setNotes } = useContext(NoteContext);
 
@@ -34,6 +34,10 @@ const Color = ({ color }) => {
             await db.notes.update(selectedNote.$id, {
                 colors: JSON.stringify(color),
             });
+
+            if (onSelect) {
+                onSelect();
+            }
             
         } catch (error) {
             console.error("Error changing color:", error);
@@ -50,3 +54,4 @@ const Color = ({ color }) => {
 };
 
 export default Color;
+

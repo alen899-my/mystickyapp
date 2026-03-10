@@ -1,0 +1,604 @@
+/* Infinite Canvas & Sticky Note Layout */
+.notes-page {
+    width: 100vw;
+    height: 100vh;
+    background-color: #0c0c0c;
+    overflow: hidden;
+    position: fixed;
+    top: 0;
+    left: 0;
+    touch-action: none;
+}
+
+.grid-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+    background-image: radial-gradient(rgba(255, 235, 161, 0.06) 1px, transparent 1px);
+    background-repeat: repeat;
+}
+
+.canvas {
+    width: 50000px; 
+    height: 50000px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+}
+
+/* ═══════════════════════════════════════
+   Sticky Note Card — Premium Design
+   ═══════════════════════════════════════ */
+.card {
+    width: 260px;
+    min-height: 260px;
+    position: absolute;
+    cursor: default;
+    display: flex;
+    flex-direction: column;
+    /* Rich paper shadow */
+    box-shadow:
+        0 1px 1px rgba(0,0,0,0.12),
+        0 4px 8px rgba(0,0,0,0.12),
+        0 16px 32px rgba(0,0,0,0.18);
+    /* translateZ(0) forces GPU layer — keeps text crisp on rotated elements */
+    transform: rotate(var(--rotation, 0deg)) translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    will-change: transform;
+    transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+                box-shadow 0.25s ease;
+    border-radius: 2px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%);
+    animation: cardPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    overflow: visible;
+}
+
+@keyframes cardPopIn {
+    0%   { opacity: 0; transform: scale(0.5) rotate(calc(var(--rotation, 0deg) + 8deg)) translateZ(0); }
+    70%  { opacity: 1; transform: scale(1.04) rotate(calc(var(--rotation, 0deg) - 1deg)) translateZ(0); }
+    100% { opacity: 1; transform: scale(1) rotate(var(--rotation, 0deg)) translateZ(0); }
+}
+
+/* Folded corner triangle */
+.card::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 22px;
+    height: 22px;
+    background: linear-gradient(225deg, rgba(0,0,0,0.22) 45%, rgba(0,0,0,0) 45%);
+    z-index: 20;
+    pointer-events: none;
+}
+
+.card:hover {
+    transform: translateY(-6px) rotate(var(--rotation, 0deg)) scale(1.02) translateZ(0);
+    box-shadow:
+        0 1px 1px rgba(0,0,0,0.12),
+        0 8px 20px rgba(0,0,0,0.18),
+        0 28px 50px rgba(0,0,0,0.22);
+}
+
+/* ── Header / Drag handle ── */
+.card-header {
+    height: 40px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 12px;
+    cursor: grab;
+    user-select: none;
+    position: relative;
+}
+
+.card-header:active {
+    cursor: grabbing;
+}
+
+.card-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Delete button */
+.card-delete-btn {
+    background: rgba(0,0,0,0.12);
+    border: none;
+    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.15s;
+    padding: 0;
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.card-delete-btn:hover {
+    background: rgba(220, 38, 38, 0.25);
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* Saving spinner */
+.card-saving {
+    display: flex;
+    align-items: center;
+    opacity: 0.55;
+}
+
+/* Author chip */
+.card-author {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100px;
+    overflow: hidden;
+}
+
+.card-author-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 900;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.card-author-name {
+    font-size: 0.65rem;
+    font-weight: 700;
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 65px;
+}
+
+/* ── Tape strip ── */
+.card-tape {
+    height: 10px;
+    width: 60px;
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    opacity: 0.7;
+    z-index: 30;
+    pointer-events: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+/* ── Body / Textarea ── */
+.card-body {
+    flex: 1;
+    padding: 10px 16px 8px;
+    position: relative;
+    /* Ruled lines */
+    background-image: repeating-linear-gradient(
+        to bottom,
+        transparent,
+        transparent 28px,
+        rgba(0,0,0,0.06) 28px,
+        rgba(0,0,0,0.06) 29px
+    );
+    background-position: 0 40px;
+}
+
+.card-body textarea {
+    background: transparent;
+    border: none;
+    width: 100%;
+    min-height: 140px;
+    resize: none;
+    outline: none;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 29px;
+    color: inherit;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+.card-body textarea::placeholder {
+    opacity: 0.35;
+    font-style: italic;
+}
+
+/* ── Footer ── */
+.card-footer {
+    font-size: 0.6rem;
+    font-weight: 700;
+    opacity: 0.45;
+    text-align: right;
+    padding: 4px 14px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Controls Bar */
+#controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+    position: fixed;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: rgba(26, 26, 26, 0.8);
+    backdrop-filter: blur(20px);
+    padding: 1.25rem;
+    border-radius: 40px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255, 235, 161, 0.15);
+    z-index: 10000;
+}
+
+.color {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), border-color 0.2s;
+    border: 3px solid transparent;
+}
+
+.color:hover {
+    transform: scale(1.2);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+#add-btn {
+    background: linear-gradient(135deg, #ffeba1 0%, #ffd94a 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 48px;
+    width: 48px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s;
+    color: #000;
+    box-shadow: 0 4px 15px rgba(255, 235, 161, 0.3);
+}
+
+#add-btn:hover {
+    transform: scale(1.1) rotate(90deg);
+    box-shadow: 0 8px 25px rgba(255, 235, 161, 0.5);
+}
+
+#color-plus-btn {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 38px;
+    width: 38px;
+    border-radius: 50%;
+    cursor: pointer;
+    color: #ffeba1;
+    border: 2px dashed rgba(255, 235, 161, 0.3);
+    transition: all 0.2s;
+}
+
+#color-plus-btn:hover {
+    background-color: rgba(255, 235, 161, 0.05);
+    border-color: #ffeba1;
+}
+
+/* Color Modal */
+.color-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 30000;
+}
+
+.color-modal-content {
+    background: #161616;
+    padding: 2.5rem;
+    border-radius: 24px;
+    width: 90%;
+    max-width: 440px;
+    border: 1px solid rgba(255, 235, 161, 0.1);
+    box-shadow: 0 40px 100px rgba(0,0,0,0.8);
+}
+
+.color-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.color-modal-header h3 {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #fff;
+}
+
+.color-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1.2rem;
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.color-grid::-webkit-scrollbar {
+    width: 6px;
+}
+
+.color-grid::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+}
+
+.color-grid::-webkit-scrollbar-thumb {
+    background: rgba(255, 235, 161, 0.2);
+    border-radius: 10px;
+}
+
+.close-btn {
+    cursor: pointer;
+    color: #666;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: #fff;
+}
+
+/* Top Bar Styling for NoteCanvas */
+.back-btn {
+    background-color: rgba(26, 26, 26, 0.8);
+    color: #ffeba1;
+    border: 1px solid rgba(255, 235, 161, 0.2);
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.back-btn:hover {
+    background-color: #ffeba1;
+    color: #1a1a1a;
+    transform: translateX(-5px);
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    #controls {
+        right: 20px;
+        padding: 1rem;
+        gap: 1rem;
+    }
+
+    .color, #color-plus-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    #add-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .card {
+        width: 260px; /* Slightly narrower on mobile */
+    }
+
+    .back-btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 480px) {
+    #controls {
+        right: 15px;
+        padding: 0.8rem;
+    }
+
+    .card {
+        width: 220px;
+    }
+
+    .card-body textarea {
+        font-size: 1rem;
+    }
+}
+
+/* Navbar/Dropdown Styles for Note Canvas */
+.clean-top-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 999999999;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 2.5rem;
+    background-color: rgba(12, 12, 12, 0.85); /* Slightly darker for better contrast */
+    backdrop-filter: blur(15px);
+    border-bottom: 1px solid rgba(255, 235, 161, 0.1);
+}
+
+.user-profile-nav {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mini-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffeba1 0%, #ffd94a 100%);
+    color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    transition: transform 0.2s;
+}
+
+.mini-avatar:hover {
+    transform: scale(1.1);
+}
+
+.profile-dropdown.dash-dropdown {
+    position: absolute;
+    top: calc(100% + 15px);
+    right: 0;
+    background: #1a1a1a;
+    border: 1px solid rgba(255, 235, 161, 0.15);
+    border-radius: 20px;
+    min-width: 240px;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.7);
+    padding: 1.5rem;
+    animation: dropdownPop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+    z-index: 50000000;
+}
+
+@keyframes dropdownPop {
+    from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dropdown-user-info {
+    margin-bottom: 1rem;
+}
+
+.dropdown-username {
+    font-size: 1.1rem;
+    font-weight: 950;
+    color: #fff;
+    margin-bottom: 2px;
+}
+
+.dropdown-email {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.05);
+    margin: 0.75rem 0;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+    color: #ccc;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+
+.logout-item {
+    color: #ff4444;
+}
+
+.logout-item:hover {
+    background: rgba(244, 67, 54, 0.1);
+    color: #ff4444;
+}
+/* Large Desktop Enhancements */
+@media (min-width: 1440px) {
+    .clean-top-bar {
+        padding: 1.25rem 4rem;
+    }
+
+    #controls {
+        right: 60px;
+        padding: 1.25rem;
+        gap: 1.2rem;
+    }
+
+    .profile-dropdown.dash-dropdown {
+        min-width: 300px;
+        padding: 2rem;
+        top: calc(100% + 20px);
+    }
+
+    .dropdown-username {
+        font-size: 1.25rem;
+    }
+
+    .dropdown-item {
+        padding: 14px 20px;
+        font-size: 1.05rem;
+    }
+
+    .card {
+        width: 320px; /* Slightly larger notes for 4K/Large screens */
+        height: 320px;
+    }
+
+    .card-body textarea {
+        font-size: 1.25rem;
+    }
+}

@@ -1,5 +1,21 @@
+# ════════════════════════════════════════════════
+# MySticky — Root .gitignore
+# Covers: Node/Vite frontend + Python/FastAPI backend
+# ════════════════════════════════════════════════
+
+# ── Node / Frontend ─────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+.cache/
+.parcel-cache/
+
+# Vite
+*.local
+vite.config.js.timestamp-*
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,18 +23,72 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# ── Python / Backend ────────────────────────────
+backend/__pycache__/
+backend/**/__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
 
-# Editor directories and files
+# Virtual environments
+backend/venv/
+backend/.venv/
+backend/env/
+venv/
+.venv/
+env/
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Alembic (keep alembic.ini & migrations folder, ignore pycache inside)
+backend/alembic.ini
+backend/migrations/versions/__pycache__/
+
+# ── Database files ───────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+backend/*.db
+backend/*.sqlite3
+
+# ── Environment & Secrets ────────────────────────
+.env
+.env.*
+!.env.example        # keep the example template
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# ── Editor & OS ──────────────────────────────────
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+!.vscode/settings.json
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Docker (optional, ignore local override) ────
+docker-compose.override.yml
+
+# ── Misc ─────────────────────────────────────────
+*.bak
+*.tmp
+*.temp
