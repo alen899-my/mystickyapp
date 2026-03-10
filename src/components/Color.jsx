@@ -2,33 +2,44 @@ import React from "react";
 import { useContext } from "react";
 import { NoteContext } from "../context/NotesContext";
 import { db } from "../appwrite/databases";
+
 const Color = ({ color }) => {
-    const {selectedNote} = useContext(NoteContext)
-    const changeColor = () => {
-        console.log("Selected color:", selectedNote);
-     
+    // 1. Add 'notes' and 'setNotes' to the context destructuring
+    const { selectedNote, notes, setNotes } = useContext(NoteContext);
+
+    const changeColor = async () => {
         try {
+            // 2. Ensure a note is actually selected
+            if (!selectedNote) {
+                alert("Please select a note first.");
+                return;
+            }
+
             const currentNoteIndex = notes.findIndex(
                 (note) => note.$id === selectedNote.$id
             );
-     
+
+            // 3. Create the updated note object
             const updatedNote = {
                 ...notes[currentNoteIndex],
                 colors: JSON.stringify(color),
             };
-     
+
+            // 4. Update the local state so the UI changes immediately
             const newNotes = [...notes];
             newNotes[currentNoteIndex] = updatedNote;
             setNotes(newNotes);
-     
-            db.notes.update(selectedNote.$id, {
+
+            // 5. Update the Appwrite database
+            await db.notes.update(selectedNote.$id, {
                 colors: JSON.stringify(color),
             });
+            
         } catch (error) {
-            alert("You must select a note before changing colors");
+            console.error("Error changing color:", error);
         }
     };
- 
+
     return (
         <div
             onClick={changeColor}
