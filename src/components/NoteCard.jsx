@@ -8,20 +8,29 @@ const NoteCard = ({ note }) => {
     const cardRef          = useRef(null);
     const textAreaRef      = useRef(null);
     const keyUpTimer       = useRef(null);
-    const posRef           = useRef(JSON.parse(note.position));
+    const getNotePosition = (p) => {
+        if (!p) return { x: 0, y: 0 };
+        return typeof p === "string" ? JSON.parse(p) : p;
+    };
+
+    const getNoteColors = (c) => {
+        if (!c) return { colorHeader: "#000", colorBody: "#fff", colorText: "#000" };
+        return typeof c === "string" ? JSON.parse(c) : c;
+    };
+
+    const posRef           = useRef(getNotePosition(note.position));
     const isInteractingRef = useRef(false);
-    const ignoreUpdatesUntilRef = useRef(0);
     // Track whether a body save is in-flight so onBlur knows to stay locked
     const bodySavingRef    = useRef(false);
 
     const { setNotes, setSelectedNote, zoomRef } = useContext(NoteContext);
 
     const [saving,   setSaving]   = useState(false);
-    const [position, setPosition] = useState(() => JSON.parse(note.position));
+    const [position, setPosition] = useState(() => getNotePosition(note.position));
     const [body,     setBody]     = useState(() => bodyParser(note.body));
     const [rotation]              = useState(() => Math.round(Math.random() * 4) - 2);
 
-    const colors      = JSON.parse(note.colors);
+    const colors      = getNoteColors(note.colors);
     const headerColor = colors.colorHeader;
     const bodyColor   = colors.colorBody;
     const textColor   = colors.colorText;
@@ -30,39 +39,21 @@ const NoteCard = ({ note }) => {
     // ── Server sync — only apply when not interacting ──────────────
     useEffect(() => {
         if (isInteractingRef.current) return;
-
-        const msLeft = ignoreUpdatesUntilRef.current - Date.now();
-        if (msLeft > 0) {
-            const t = setTimeout(() => {
-                if (!isInteractingRef.current) {
-                    const p = JSON.parse(note.position);
-                    posRef.current = p;
-                    setPosition(p);
-                }
-            }, msLeft + 10);
-            return () => clearTimeout(t);
+        const p = getNotePosition(note.position);
+        if (p && (p.x !== posRef.current.x || p.y !== posRef.current.y)) {
+            posRef.current = { x: p.x, y: p.y };
+            setPosition(posRef.current);
         }
-
-        const p = JSON.parse(note.position);
-        posRef.current = p;
-        setPosition(p);
-    }, [note.position]); // eslint-disable-line
+    }, [note.position]);
 
     useEffect(() => {
         if (isInteractingRef.current) return;
-
-        const msLeft = ignoreUpdatesUntilRef.current - Date.now();
-        if (msLeft > 0) {
-            const t = setTimeout(() => {
-                if (!isInteractingRef.current) {
-                    setBody(bodyParser(note.body));
-                }
-            }, msLeft + 10);
-            return () => clearTimeout(t);
+        const noteBody = note.body || "";
+        const newBody = bodyParser(noteBody);
+        if (newBody !== body) {
+            setBody(newBody);
         }
-
-        setBody(bodyParser(note.body));
-    }, [note.body]); // eslint-disable-line
+    }, [note.body, body]);
 
     useEffect(() => {
         autoGrow(textAreaRef);
@@ -80,14 +71,6 @@ const NoteCard = ({ note }) => {
     useEffect(() => { noteIdRef.current = note.$id; }, [note.$id]);
 
     // ── Helpers ─────────────────────────────────────────────────────
-    const blockPollingFor = (ms) => {
-        ignoreUpdatesUntilRef.current = Date.now() + ms;
-    };
-
-    const releaseInteraction = () => {
-        blockPollingFor(2000);
-        isInteractingRef.current = false;
-    };
 
     // ── Save ────────────────────────────────────────────────────────
     const saveData = async (key, value, retryCount = 0) => {
@@ -123,21 +106,29 @@ const NoteCard = ({ note }) => {
     const handleKeyUp = () => {
         clearTimeout(keyUpTimer.current);
         keyUpTimer.current = null;
-
         isInteractingRef.current = true;
 
         keyUpTimer.current = setTimeout(async () => {
             bodySavingRef.current = true;
+            
+            const currentBody = textAreaRef.current ? textAreaRef.current.value : body;
+
+            // Protect local change in central state immediately against polls
+            setNotes(prev => prev.map(n => n.cid === note.cid ? {
+                ...n,
+                body: currentBody,
+                __localEdit: Date.now()
+            } : n));
+
             try {
                 if (textAreaRef.current) {
                     await saveData("body", textAreaRef.current.value);
                 }
             } finally {
-                keyUpTimer.current = null;       // ← CRITICAL: mark timer as done
+                keyUpTimer.current = null;
                 bodySavingRef.current = false;
-                // Only release if the textarea is no longer focused
                 if (document.activeElement !== textAreaRef.current) {
-                    releaseInteraction();
+                    isInteractingRef.current = false;
                 }
             }
         }, 1500);
@@ -159,21 +150,28 @@ const NoteCard = ({ note }) => {
             lastY = screenY;
 
             const z = zoomRef?.current || 1;
-            posRef.current = {
+            const newPos = {
                 x: posRef.current.x + dxScreen / z,
                 y: posRef.current.y + dyScreen / z,
             };
-            // Spread into a new object so React sees a new reference and re-renders
-            setPosition({ ...posRef.current });
+            posRef.current = newPos;
+            setPosition(newPos);
         };
 
         const end = async () => {
-            // Snapshot the position before any async gap
             const finalPos = { ...posRef.current };
+
+            // Protect local change in central state immediately against polls
+            setNotes(prev => prev.map(n => n.cid === note.cid ? {
+                ...n,
+                position: JSON.stringify(finalPos),
+                __localEdit: Date.now()
+            } : n));
+
             try {
                 await saveData("position", finalPos);
             } finally {
-                releaseInteraction();
+                isInteractingRef.current = false;
             }
         };
 
@@ -286,11 +284,10 @@ const NoteCard = ({ note }) => {
                     }}
                     onBlur={() => {
                         // If a body save is still in-flight or timer is pending, don't release.
-                        // The timer's finally block will call releaseInteraction() instead.
                         if (keyUpTimer.current !== null || bodySavingRef.current) {
                             return;
                         }
-                        releaseInteraction();
+                        isInteractingRef.current = false;
                     }}
                     onInput={() => autoGrow(textAreaRef)}
                     style={{ color: textColor }}

@@ -16,31 +16,51 @@ const Color = ({ color, onSelect }) => {
             }
 
             const currentNoteIndex = notes.findIndex(
-                (note) => note.$id === selectedNote.$id
+                (note) => note.cid === selectedNote.cid || note.$id === selectedNote.$id
             );
 
-            // 3. Create the updated note object
-            const updatedNote = {
-                ...notes[currentNoteIndex],
-                colors: JSON.stringify(color),
-            };
+            if (currentNoteIndex === -1) return;
+
+            const targetNote = notes[currentNoteIndex];
+            const newColorString = JSON.stringify(color);
 
             // 4. Update the local state so the UI changes immediately
-            const newNotes = [...notes];
-            newNotes[currentNoteIndex] = updatedNote;
-            setNotes(newNotes);
+            setNotes(prev => prev.map(n => n.cid === targetNote.cid ? {
+                ...n,
+                colors: newColorString,
+                __localEdit: Date.now()
+            } : n));
 
-            // 5. Update the Appwrite database
-            await db.notes.update(selectedNote.$id, {
-                colors: JSON.stringify(color),
-            });
+            // 5. Update the Appwrite database with retry logic for optimistic notes
+            const saveToServer = async (retryCount = 0) => {
+                let latestId = targetNote.$id;
+                // Peek at latest state to get potential real ID
+                setNotes(prev => {
+                    const latestNote = prev.find(n => n.cid === targetNote.cid);
+                    if (latestNote) latestId = latestNote.$id;
+                    return prev;
+                });
+
+                if (typeof latestId === "string" && latestId.startsWith("temp-")) {
+                    if (retryCount < 20) {
+                        setTimeout(() => saveToServer(retryCount + 1), 500);
+                    }
+                    return;
+                }
+
+                try {
+                    await db.notes.update(latestId, { colors: newColorString });
+                } catch(e) { console.error("Error changing color:", e); }
+            };
+
+            saveToServer();
 
             if (onSelect) {
                 onSelect();
             }
             
         } catch (error) {
-            console.error("Error changing color:", error);
+            console.error("Error changing color (sync):", error);
         }
     };
 

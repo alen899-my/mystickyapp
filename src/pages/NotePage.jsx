@@ -221,10 +221,14 @@ const NotesPage = () => {
                             ? { ...serverNote, cid: local.cid }
                             : { ...serverNote };
 
-                        // NoteCard owns position/body while interacting.
-                        // We NEVER overwrite them here — the per-card
-                        // isInteractingRef + ignoreUpdatesUntilRef guards handle that
-                        // inside NoteCard's own useEffect hooks.
+                        // If user modified this recently, protect its fields from being overwritten by stale polls
+                        if (local.__localEdit && Date.now() - local.__localEdit < 10000) {
+                            base.position = local.position;
+                            base.body = local.body;
+                            base.colors = local.colors;
+                            base.__localEdit = local.__localEdit;
+                        }
+
                         return base;
                     });
 

@@ -45,7 +45,19 @@ const AddButton = () => {
             
             // 3. Replace temp note with real data but KEEP the CID for stable key
             setNotes((prevState) => 
-                prevState.map(n => n.$id === tempId ? { ...response, cid: tempId } : n)
+                prevState.map(n => {
+                    if (n.cid === tempId) {
+                        return { 
+                            ...response, 
+                            cid: tempId,
+                            body: n.__localEdit ? n.body : response.body,
+                            position: n.__localEdit ? n.position : response.position,
+                            colors: n.__localEdit ? n.colors : response.colors,
+                            __localEdit: n.__localEdit || undefined
+                        };
+                    }
+                    return n;
+                })
             );
         } catch (error) {
             // Rollback on failure
