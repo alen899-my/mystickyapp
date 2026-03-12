@@ -7,7 +7,7 @@ import { useContext } from "react";
 import { NoteContext } from "../context/NotesContext";
 
 const AddButton = () => {
-    const { setNotes, currentNotebookId, canvasOffset } = useContext(NoteContext);
+    const { setNotes, currentNotebookId, canvasOffset, zoom } = useContext(NoteContext);
  
     const addNote = async () => {
         if (!currentNotebookId) {
@@ -16,8 +16,8 @@ const AddButton = () => {
         }
 
         // Calculate center relative to current canvas view
-        const spawnX = (window.innerWidth / 2) - canvasOffset.x - 150;
-        const spawnY = (window.innerHeight / 2) - canvasOffset.y - 120;
+        const spawnX = Math.round((window.innerWidth / 2 - canvasOffset.x) / zoom) - 150;
+        const spawnY = Math.round((window.innerHeight / 2 - canvasOffset.y) / zoom) - 120;
 
         const tempId = `temp-${Date.now()}`;
         const optimisticNote = {

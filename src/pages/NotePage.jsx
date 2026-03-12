@@ -4,94 +4,97 @@ import NoteCard from "../components/NoteCard";
 import Controls from "../components/Controls";
 import { db } from "../utils/db";
 import { useNavigate, useParams } from "react-router-dom";
-import { Search, LogOut, UserPlus, DoorOpen, Copy, Check, ArrowLeft } from "lucide-react";
+import { LogOut, UserPlus, DoorOpen, Copy, Check, ArrowLeft } from "lucide-react";
 import "../styles/NoteCanvas.css";
 
 const NotesPage = () => {
-    const { notes, setNotes, currentNotebookId, setCurrentNotebookId, canvasOffset, setCanvasOffset, zoom, setZoom } = useContext(NoteContext);
-    const [currentUser, setCurrentUser] = useState(null);
-    const [showDropdown, setShowDropdown] = useState(false);
+    const {
+        notes, setNotes,
+        currentNotebookId, setCurrentNotebookId,
+        canvasOffset, setCanvasOffset,
+        zoom, setZoom
+    } = useContext(NoteContext);
+
+    const [currentUser, setCurrentUser]         = useState(null);
+    const [showDropdown, setShowDropdown]       = useState(false);
     const [showInviteModal, setShowInviteModal] = useState(false);
-    const [inviteCode, setInviteCode] = useState("");
-    const [copied, setCopied] = useState(false);
-    
-    const navigate = useNavigate();
-    const { id } = useParams();
+    const [inviteCode, setInviteCode]           = useState("");
+    const [copied, setCopied]                   = useState(false);
+
+    const navigate     = useNavigate();
+    const { id }       = useParams();
     const notesPageRef = useRef(null);
 
-    // Canvas Panning State
-    const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+    // Canvas pan state
+    const [startPos, setStartPos]     = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
 
-    // Pinch-to-zoom state (mobile)
+    // Pinch-to-zoom refs (mobile)
     const lastPinchDistRef = useRef(null);
-    const lastPinchMidRef = useRef(null);
+    const lastPinchMidRef  = useRef(null);
 
-    // Sync URL to Context
+    // Sync URL param → context
     useEffect(() => {
-        if (id) {
-            setCurrentNotebookId(id);
-        }
+        if (id) setCurrentNotebookId(id);
     }, [id, setCurrentNotebookId]);
 
-    // Figma-like Zoom logic: prevent browser zoom and zoom into cursor
+    // Figma-style zoom: intercept ctrl+wheel, zoom into cursor
     useEffect(() => {
         const handleZoom = (e) => {
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
-                
-                const delta = -e.deltaY;
-                // High-performance trackpad zoom math
-                const zoomFactor = Math.pow(1.35, delta / 80); 
+                const delta      = -e.deltaY;
+                const zoomFactor = Math.pow(1.35, delta / 80);
 
                 setZoom(prevZoom => {
                     const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
-                    
                     setCanvasOffset(prevOffset => {
-                        const rect = notesPageRef.current.getBoundingClientRect();
-                        const mouseX = e.clientX - rect.left;
-                        const mouseY = e.clientY - rect.top;
-
-                        const canvasMouseX = (mouseX - prevOffset.x) / prevZoom;
-                        const canvasMouseY = (mouseY - prevOffset.y) / prevZoom;
-
-                        const newOffsetX = mouseX - canvasMouseX * nextZoom;
-                        const newOffsetY = mouseY - canvasMouseY * nextZoom;
-
-                        return { x: newOffsetX, y: newOffsetY };
+                        const rect    = notesPageRef.current.getBoundingClientRect();
+                        const mouseX  = e.clientX - rect.left;
+                        const mouseY  = e.clientY - rect.top;
+                        const cMouseX = (mouseX - prevOffset.x) / prevZoom;
+                        const cMouseY = (mouseY - prevOffset.y) / prevZoom;
+                        return {
+                            x: mouseX - cMouseX * nextZoom,
+                            y: mouseY - cMouseY * nextZoom,
+                        };
                     });
-
                     return nextZoom;
                 });
             } else {
-                // Natural Panning 
                 setCanvasOffset(prev => ({
                     x: prev.x - e.deltaX,
-                    y: prev.y - e.deltaY
+                    y: prev.y - e.deltaY,
                 }));
             }
         };
 
-        const handleNativeTouchMove = (e) => {
-            if (e.touches.length >= 2) {
-                e.preventDefault();
-            }
+        const blockNativePinch = (e) => {
+            if (e.touches.length >= 2) e.preventDefault();
         };
 
         const page = notesPageRef.current;
         if (page) {
-            page.addEventListener('wheel', handleZoom, { passive: false });
-            // Non-passive touchmove so e.preventDefault() can block native pinch-zoom
-            page.addEventListener('touchmove', handleNativeTouchMove, { passive: false });
+            page.addEventListener("wheel",     handleZoom,       { passive: false });
+            page.addEventListener("touchmove", blockNativePinch, { passive: false });
         }
         return () => {
-            if (page) page.removeEventListener('wheel', handleZoom);
-            if (page) page.removeEventListener('touchmove', handleNativeTouchMove);
+            if (page) {
+                page.removeEventListener("wheel",     handleZoom);
+                page.removeEventListener("touchmove", blockNativePinch);
+            }
         };
     }, [setZoom, setCanvasOffset]);
 
+    // ── Mouse pan ──────────────────────────────────────────────────
     const handleMouseDown = (e) => {
-        if (e.button === 1 || e.target.classList.contains("notes-page") || e.target.classList.contains("grid-background") || e.target.classList.contains("canvas")) {
+        const onCanvas =
+            e.button === 1 ||
+            e.target.classList.contains("notes-page") ||
+            e.target.classList.contains("grid-background") ||
+            e.target.classList.contains("canvas");
+
+        if (onCanvas) {
             setIsDragging(true);
             setStartPos({ x: e.clientX - canvasOffset.x, y: e.clientY - canvasOffset.y });
         }
@@ -103,10 +106,9 @@ const NotesPage = () => {
         }
     };
 
-    const handleMouseUp = () => {
-        setIsDragging(false);
-    };
+    const handleMouseUp = () => setIsDragging(false);
 
+    // ── Touch pan + pinch zoom ─────────────────────────────────────
     const getTouchDist = (t1, t2) =>
         Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
 
@@ -117,89 +119,73 @@ const NotesPage = () => {
 
     const handleTouchStart = (e) => {
         if (e.touches.length === 2) {
-            // Begin pinch — cancel any pan
             setIsDragging(false);
             lastPinchDistRef.current = getTouchDist(e.touches[0], e.touches[1]);
-            lastPinchMidRef.current = getTouchMid(e.touches[0], e.touches[1]);
-        } else if (e.touches.length === 1 && (e.target.classList.contains("notes-page") || e.target.classList.contains("grid-background") || e.target.classList.contains("canvas"))) {
+            lastPinchMidRef.current  = getTouchMid(e.touches[0], e.touches[1]);
+        } else if (
+            e.touches.length === 1 &&
+            (e.target.classList.contains("notes-page") ||
+             e.target.classList.contains("grid-background") ||
+             e.target.classList.contains("canvas"))
+        ) {
             setIsDragging(true);
-            const touch = e.touches[0];
-            setStartPos({ x: touch.clientX - canvasOffset.x, y: touch.clientY - canvasOffset.y });
+            const t = e.touches[0];
+            setStartPos({ x: t.clientX - canvasOffset.x, y: t.clientY - canvasOffset.y });
         }
     };
 
     const handleTouchMove = (e) => {
         if (e.touches.length === 2) {
-            // Pinch-to-zoom
             e.preventDefault();
             const newDist = getTouchDist(e.touches[0], e.touches[1]);
-            const newMid = getTouchMid(e.touches[0], e.touches[1]);
-            const prevDist = lastPinchDistRef.current;
+            const newMid  = getTouchMid(e.touches[0], e.touches[1]);
+            const prev    = lastPinchDistRef.current;
 
-            if (prevDist && prevDist > 0) {
-                const zoomFactor = newDist / prevDist;
-
+            if (prev && prev > 0) {
+                const zoomFactor = newDist / prev;
                 setZoom(prevZoom => {
                     const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
-
                     setCanvasOffset(prevOffset => {
-                        const rect = notesPageRef.current.getBoundingClientRect();
-                        const midX = newMid.x - rect.left;
-                        const midY = newMid.y - rect.top;
-
-                        // Anchor zoom to the midpoint between the two fingers
-                        const canvasMidX = (midX - prevOffset.x) / prevZoom;
-                        const canvasMidY = (midY - prevOffset.y) / prevZoom;
-
-                        return {
-                            x: midX - canvasMidX * nextZoom,
-                            y: midY - canvasMidY * nextZoom,
-                        };
+                        const rect  = notesPageRef.current.getBoundingClientRect();
+                        const midX  = newMid.x - rect.left;
+                        const midY  = newMid.y - rect.top;
+                        const cMidX = (midX - prevOffset.x) / prevZoom;
+                        const cMidY = (midY - prevOffset.y) / prevZoom;
+                        return { x: midX - cMidX * nextZoom, y: midY - cMidY * nextZoom };
                     });
-
                     return nextZoom;
                 });
             }
 
             lastPinchDistRef.current = newDist;
-            lastPinchMidRef.current = newMid;
+            lastPinchMidRef.current  = newMid;
         } else if (isDragging && e.touches.length === 1) {
-            const touch = e.touches[0];
-            setCanvasOffset({ x: touch.clientX - startPos.x, y: touch.clientY - startPos.y });
+            const t = e.touches[0];
+            setCanvasOffset({ x: t.clientX - startPos.x, y: t.clientY - startPos.y });
         }
     };
 
     const handleTouchEnd = (e) => {
         if (e.touches.length < 2) {
             lastPinchDistRef.current = null;
-            lastPinchMidRef.current = null;
+            lastPinchMidRef.current  = null;
         }
-        if (e.touches.length === 0) {
-            setIsDragging(false);
-        }
+        if (e.touches.length === 0) setIsDragging(false);
     };
 
+    // ── Auth ───────────────────────────────────────────────────────
     const handleLogout = () => {
         localStorage.removeItem("token");
         navigate("/login");
     };
 
     useEffect(() => {
-        const fetchUser = async () => {
-            try {
-                const response = await db.auth.getMe();
-                if (response.ok) {
-                    const user = await response.json();
-                    setCurrentUser(user);
-                }
-            } catch (err) {
-                console.error("Failed to fetch user:", err);
-            }
-        };
-        fetchUser();
+        db.auth.getMe()
+            .then(r => r.ok && r.json().then(setCurrentUser))
+            .catch(err => console.error("Failed to fetch user:", err));
     }, []);
 
-    // Polling — field-level merge so notes never jump mid-drag/type
+    // ── Polling — conservative merge that never overwrites local state ──
     useEffect(() => {
         if (!currentNotebookId) return;
 
@@ -210,47 +196,51 @@ const NotesPage = () => {
 
                 const serverNotes = result.documents;
 
-                setNotes((prev) => {
-                    // Keep pending optimistic notes that haven't been confirmed yet
+                setNotes(prev => {
                     const serverIds = new Set(serverNotes.map(n => n.$id));
-                    const pendingOptimistic = prev.filter(
+
+                    // Keep any optimistic (temp-id) notes that haven't been
+                    // confirmed by the server yet
+                    const stillPending = prev.filter(
                         n => typeof n.$id === "string" &&
                              n.$id.startsWith("temp-") &&
-                             !serverIds.has(n.cid)
+                             !serverIds.has(n.$id)
                     );
 
-                    // For each server note, do a field-level merge with the current local version.
-                    // This preserves local position/body changes that haven't been saved to server yet.
+                    // Build a lookup for current local notes
                     const prevById = new Map(prev.map(n => [n.$id, n]));
 
                     const merged = serverNotes.map(serverNote => {
                         const local = prevById.get(serverNote.$id);
-                        if (!local) return serverNote; // new note from another user
 
-                        // If position changed on server AND we are not interacting → update
-                        // (NoteCard's isInteractingRef handles the per-card guard,
-                        //  so just pass through whatever the server says)
-                        return {
-                            ...serverNote,
-                            // Preserve any local fields that we haven't flushed yet
-                            // by letting server values through — NoteCard's ref guard
-                            // will reject the update if the card is being dragged/typed
-                        };
+                        if (!local) return serverNote; // brand-new note from another user
+
+                        // Always preserve cid so the React key is stable and the
+                        // component is never unmounted/remounted on a poll tick.
+                        const base = local.cid
+                            ? { ...serverNote, cid: local.cid }
+                            : { ...serverNote };
+
+                        // NoteCard owns position/body while interacting.
+                        // We NEVER overwrite them here — the per-card
+                        // isInteractingRef + ignoreUpdatesUntilRef guards handle that
+                        // inside NoteCard's own useEffect hooks.
+                        return base;
                     });
 
-                    return [...merged, ...pendingOptimistic];
+                    return [...merged, ...stillPending];
                 });
             } catch (err) {
                 console.error("Polling error:", err);
             }
         };
 
-        pollNotes(); // initial load
-        const interval = setInterval(pollNotes, 6000); // 6s — enough time for saves to land
+        pollNotes();
+        const interval = setInterval(pollNotes, 6000);
         return () => clearInterval(interval);
     }, [currentNotebookId, setNotes]);
 
-
+    // ── Invite ─────────────────────────────────────────────────────
     const handleInvite = async () => {
         try {
             const result = await db.notebooks.invite(currentNotebookId);
@@ -267,22 +257,30 @@ const NotesPage = () => {
     };
 
     const handleLeave = async () => {
-        if (window.confirm("Are you sure you want to leave this shared notebook?")) {
-            try {
-                const result = await db.notebooks.leave(currentNotebookId);
-                if (result.message === "Left successfully") {
-                    navigate("/");
-                } else {
-                    alert(result.detail || "Owners cannot leave their own notebooks. You must delete it instead.");
-                }
-            } catch (err) {
-                console.error("Leave error:", err);
+        if (!window.confirm("Leave this shared notebook?")) return;
+        try {
+            const result = await db.notebooks.leave(currentNotebookId);
+            if (result.message === "Left successfully") {
+                navigate("/");
+            } else {
+                alert(result.detail || "Owners cannot leave. Delete the notebook instead.");
             }
+        } catch (err) {
+            console.error("Leave error:", err);
         }
     };
 
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const close = (e) => {
+            if (!e.target.closest(".user-profile-nav")) setShowDropdown(false);
+        };
+        document.addEventListener("click", close);
+        return () => document.removeEventListener("click", close);
+    }, []);
+
     return (
-        <div 
+        <div
             ref={notesPageRef}
             className="notes-page"
             onMouseDown={handleMouseDown}
@@ -292,33 +290,34 @@ const NotesPage = () => {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            style={{ 
-                width: "100vw", 
-                height: "100vh", 
+            style={{
+                width: "100vw",
+                height: "100vh",
                 cursor: isDragging ? "grabbing" : "grab",
-                overflow: 'hidden',
-                backgroundColor: '#0c0c0c'
+                overflow: "hidden",
             }}
         >
-            <div 
+            {/* Dot grid overlay */}
+            <div
                 className="grid-background"
                 style={{
                     backgroundSize: `${40 * zoom}px ${40 * zoom}px`,
-                    backgroundPosition: `${canvasOffset.x}px ${canvasOffset.y}px`
+                    backgroundPosition: `${canvasOffset.x}px ${canvasOffset.y}px`,
                 }}
             />
-            {/* Clean Top Bar Integration */}
+
+            {/* ── Top Bar ──────────────────────────────────────────── */}
             <header className="clean-top-bar">
                 <button className="back-btn" onClick={() => navigate("/")}>
-                    <ArrowLeft size={16} strokeWidth={2.5} style={{ marginRight: '8px' }} />
+                    <ArrowLeft size={15} strokeWidth={2.5} />
                     Dashboard
                 </button>
-                
+
                 {currentUser && (
                     <div className="user-profile-nav">
-                        <div 
+                        <div
                             className="mini-avatar"
-                            onClick={() => setShowDropdown(!showDropdown)}
+                            onClick={() => setShowDropdown(v => !v)}
                         >
                             {currentUser.username[0].toUpperCase()}
                         </div>
@@ -329,18 +328,18 @@ const NotesPage = () => {
                                     <p className="dropdown-username">{currentUser.username}</p>
                                     <p className="dropdown-email">{currentUser.email}</p>
                                 </div>
-                                <div className="dropdown-divider"></div>
+                                <div className="dropdown-divider" />
                                 <button className="dropdown-item" onClick={handleInvite}>
-                                    <UserPlus size={16} />
+                                    <UserPlus size={14} />
                                     Invite Others
                                 </button>
                                 <button className="dropdown-item" onClick={handleLeave}>
-                                    <DoorOpen size={16} />
+                                    <DoorOpen size={14} />
                                     Leave Notebook
                                 </button>
-                                <div className="dropdown-divider"></div>
+                                <div className="dropdown-divider" />
                                 <button className="dropdown-item logout-item" onClick={handleLogout}>
-                                    <LogOut size={16} style={{ marginRight: '10px' }} />
+                                    <LogOut size={14} />
                                     Logout
                                 </button>
                             </div>
@@ -349,67 +348,76 @@ const NotesPage = () => {
                 )}
             </header>
 
-            {/* Invite Modal */}
+            {/* ── Invite Modal ──────────────────────────────────────── */}
             {showInviteModal && (
-                <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setShowInviteModal(false)}>
-                    <div className="sharp-modal" style={{ textAlign: 'center' }}>
-                        <div style={{ background: 'rgba(255, 235, 161, 0.1)', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-                            <UserPlus size={32} color="#ffeba1" />
-                        </div>
-                        <h2>Invite Collaborators</h2>
-                        <p style={{ color: '#888', marginBottom: '1.5rem' }}>Anyone with this code can view and edit notes in this notebook.</p>
-                        
-                        <div style={{ 
-                            background: '#000', 
-                            padding: '1.5rem', 
-                            borderRadius: '16px', 
-                            border: '1px dashed rgba(255, 235, 161, 0.3)',
-                            fontSize: '2rem',
-                            fontWeight: '900',
-                            letterSpacing: '5px',
-                            color: '#ffeba1',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '1rem',
-                            marginBottom: '2rem'
+                <div
+                    className="modal-backdrop"
+                    onClick={e => e.target === e.currentTarget && setShowInviteModal(false)}
+                >
+                    <div className="sharp-modal" style={{ textAlign: "center" }}>
+                        <div style={{
+                            width: 52, height: 52,
+                            background: "rgba(61,44,0,0.1)",
+                            borderRadius: "3px",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            margin: "0 auto 1rem",
+                            transform: "rotate(-2deg)"
                         }}>
+                            <UserPlus size={26} color="#3d2c00" />
+                        </div>
+
+                        <h2>Invite Collaborators ✉️</h2>
+                        <p style={{ marginBottom: 0 }}>
+                            Anyone with this code can view and edit notes.
+                        </p>
+
+                        <div className="invite-code-box">
                             {inviteCode}
-                            <div 
+                            <button
+                                className="invite-copy-btn"
                                 onClick={() => {
                                     navigator.clipboard.writeText(inviteCode);
                                     setCopied(true);
                                     setTimeout(() => setCopied(false), 2000);
                                 }}
-                                style={{ cursor: 'pointer', opacity: 0.6 }}
                             >
-                                {copied ? <Check size={20} color="#4CAF50" /> : <Copy size={20} />}
-                            </div>
+                                {copied
+                                    ? <Check size={18} color="#3d8c00" />
+                                    : <Copy size={18} />
+                                }
+                            </button>
                         </div>
 
-                        <button className="sharp-btn primary" style={{ width: '100%' }} onClick={() => setShowInviteModal(false)}>
-                            Done
+                        <button
+                            className="sharp-btn primary"
+                            onClick={() => setShowInviteModal(false)}
+                        >
+                            Done →
                         </button>
                     </div>
                 </div>
             )}
 
-            <div 
+            {/* ── Canvas ───────────────────────────────────────────── */}
+            <div
                 className="canvas"
-                style={{ 
+                style={{
                     transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${zoom})`,
-                    position: 'absolute',
+                    position: "absolute",
                     top: 0,
                     left: 0,
-                    width: '50000px', // Content containment
-                    height: '50000px',
-                    transformOrigin: '0 0'
+                    width: "100%",
+                    height: "100%",
+                    transformOrigin: "0 0",
+                    overflow: "visible",
                 }}
             >
-                {notes.map((note) => (
+                {notes.map(note => (
                     <NoteCard key={note.cid || note.$id} note={note} />
                 ))}
             </div>
+
+            {/* ── Controls (color picker + add btn) ────────────────── */}
             <Controls />
         </div>
     );

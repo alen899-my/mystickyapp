@@ -8,15 +8,18 @@ const NoteCard = ({ note }) => {
     const cardRef          = useRef(null);
     const textAreaRef      = useRef(null);
     const keyUpTimer       = useRef(null);
-    const posRef           = useRef(JSON.parse(note.position)); // owns the canonical position
-    const isInteractingRef = useRef(false);                     // synchronous guard — no React async timing
+    const posRef           = useRef(JSON.parse(note.position));
+    const isInteractingRef = useRef(false);
+    const ignoreUpdatesUntilRef = useRef(0);
+    // Track whether a body save is in-flight so onBlur knows to stay locked
+    const bodySavingRef    = useRef(false);
 
     const { setNotes, setSelectedNote, zoomRef } = useContext(NoteContext);
 
-    const [saving,   setSaving]  = useState(false);
+    const [saving,   setSaving]   = useState(false);
     const [position, setPosition] = useState(() => JSON.parse(note.position));
-    const [body,     setBody]    = useState(() => bodyParser(note.body));
-    const [rotation]             = useState(() => Math.round(Math.random() * 4) - 2);
+    const [body,     setBody]     = useState(() => bodyParser(note.body));
+    const [rotation]              = useState(() => Math.round(Math.random() * 4) - 2);
 
     const colors      = JSON.parse(note.colors);
     const headerColor = colors.colorHeader;
@@ -24,19 +27,41 @@ const NoteCard = ({ note }) => {
     const textColor   = colors.colorText;
     const contrast    = getContrastColor(headerColor);
 
-    // ── Server sync — guarded by ref (always instantly accurate) ──
+    // ── Server sync — only apply when not interacting ──────────────
     useEffect(() => {
-        if (!isInteractingRef.current) {
-            const p = JSON.parse(note.position);
-            posRef.current = p;
-            setPosition(p);
+        if (isInteractingRef.current) return;
+
+        const msLeft = ignoreUpdatesUntilRef.current - Date.now();
+        if (msLeft > 0) {
+            const t = setTimeout(() => {
+                if (!isInteractingRef.current) {
+                    const p = JSON.parse(note.position);
+                    posRef.current = p;
+                    setPosition(p);
+                }
+            }, msLeft + 10);
+            return () => clearTimeout(t);
         }
+
+        const p = JSON.parse(note.position);
+        posRef.current = p;
+        setPosition(p);
     }, [note.position]); // eslint-disable-line
 
     useEffect(() => {
-        if (!isInteractingRef.current) {
-            setBody(bodyParser(note.body));
+        if (isInteractingRef.current) return;
+
+        const msLeft = ignoreUpdatesUntilRef.current - Date.now();
+        if (msLeft > 0) {
+            const t = setTimeout(() => {
+                if (!isInteractingRef.current) {
+                    setBody(bodyParser(note.body));
+                }
+            }, msLeft + 10);
+            return () => clearTimeout(t);
         }
+
+        setBody(bodyParser(note.body));
     }, [note.body]); // eslint-disable-line
 
     useEffect(() => {
@@ -44,50 +69,82 @@ const NoteCard = ({ note }) => {
         setZIndex(cardRef.current);
     }, []);
 
-    // ── Unmount cleanup ───────────────────────────────────────────
+    // ── Unmount cleanup ─────────────────────────────────────────────
     useEffect(() => {
-        return () => { clearTimeout(keyUpTimer.current); };
+        return () => {
+            clearTimeout(keyUpTimer.current);
+        };
     }, []);
 
-    // ── Save ──────────────────────────────────────────────────────
-    const saveData = async (key, value) => {
+    const noteIdRef = useRef(note.$id);
+    useEffect(() => { noteIdRef.current = note.$id; }, [note.$id]);
+
+    // ── Helpers ─────────────────────────────────────────────────────
+    const blockPollingFor = (ms) => {
+        ignoreUpdatesUntilRef.current = Date.now() + ms;
+    };
+
+    const releaseInteraction = () => {
+        blockPollingFor(2000);
+        isInteractingRef.current = false;
+    };
+
+    // ── Save ────────────────────────────────────────────────────────
+    const saveData = async (key, value, retryCount = 0) => {
+        const currentId = noteIdRef.current;
+        
+        // If still optimistic, wait for real ID from server to arrive
+        if (typeof currentId === "string" && currentId.startsWith("temp-")) {
+            if (retryCount < 20) {
+                setTimeout(() => saveData(key, value, retryCount + 1), 500);
+            } else {
+                console.error("Timed out waiting for real note ID to save", key);
+            }
+            return;
+        }
+
         setSaving(true);
         try {
-            await db.notes.update(note.$id, { [key]: JSON.stringify(value) });
+            await db.notes.update(currentId, { [key]: JSON.stringify(value) });
         } catch (err) {
             console.error("Save failed:", err);
         }
         setSaving(false);
     };
 
-    // ── Delete ────────────────────────────────────────────────────
+    // ── Delete ──────────────────────────────────────────────────────
     const handleDelete = (e) => {
         e.stopPropagation();
         db.notes.delete(note.$id);
         setNotes(prev => prev.filter(n => n.$id !== note.$id));
     };
 
-    // ── Keyboard save ─────────────────────────────────────────────
+    // ── Keyboard save ───────────────────────────────────────────────
     const handleKeyUp = () => {
         clearTimeout(keyUpTimer.current);
-        isInteractingRef.current = true; // stay locked during the debounce window
+        keyUpTimer.current = null;
+
+        isInteractingRef.current = true;
+
         keyUpTimer.current = setTimeout(async () => {
+            bodySavingRef.current = true;
             try {
-                if (textAreaRef.current) await saveData("body", textAreaRef.current.value);
+                if (textAreaRef.current) {
+                    await saveData("body", textAreaRef.current.value);
+                }
             } finally {
-                // Only release if not focused anymore
+                keyUpTimer.current = null;       // ← CRITICAL: mark timer as done
+                bodySavingRef.current = false;
+                // Only release if the textarea is no longer focused
                 if (document.activeElement !== textAreaRef.current) {
-                    isInteractingRef.current = false;
+                    releaseInteraction();
                 }
             }
         }, 1500);
     };
 
-    // ── Generic drag engine (shared by mouse + touch) ─────────────
-    // lastScreen: {x, y} in screen pixels, updated each event
-    // Returns a cleanup function
+    // ── Generic drag engine ─────────────────────────────────────────
     const startDrag = (initialScreenX, initialScreenY) => {
-        // Synchronously mark as interacting — no React async delay
         isInteractingRef.current = true;
         setZIndex(cardRef.current);
         setSelectedNote(note);
@@ -101,33 +158,32 @@ const NoteCard = ({ note }) => {
             lastX = screenX;
             lastY = screenY;
 
-            const z = zoomRef ? zoomRef.current || 1 : 1;
-            const newPos = {
+            const z = zoomRef?.current || 1;
+            posRef.current = {
                 x: posRef.current.x + dxScreen / z,
                 y: posRef.current.y + dyScreen / z,
             };
-            posRef.current = newPos;
-            setPosition({ ...newPos });
+            // Spread into a new object so React sees a new reference and re-renders
+            setPosition({ ...posRef.current });
         };
 
         const end = async () => {
-            // Keep blocking server sync until position save completes.
-            // If we release isInteractingRef BEFORE the save resolves, the
-            // poll can fire and reset the position to the old server value → jump.
+            // Snapshot the position before any async gap
+            const finalPos = { ...posRef.current };
             try {
-                await saveData("position", posRef.current);
+                await saveData("position", finalPos);
             } finally {
-                isInteractingRef.current = false;
+                releaseInteraction();
             }
         };
 
         return { move, end };
     };
 
-    // ── Mouse drag ────────────────────────────────────────────────
+    // ── Mouse drag ──────────────────────────────────────────────────
     const mouseDown = (e) => {
         if (e.target.className !== "card-header") return;
-        e.preventDefault(); // prevent text selection during drag
+        e.preventDefault();
 
         const { move, end } = startDrag(e.clientX, e.clientY);
 
@@ -141,7 +197,7 @@ const NoteCard = ({ note }) => {
         document.addEventListener("mouseup",   onUp);
     };
 
-    // ── Touch drag ────────────────────────────────────────────────
+    // ── Touch drag ──────────────────────────────────────────────────
     const touchStart = (e) => {
         if (e.target.className !== "card-header") return;
         const t0 = e.touches[0];
@@ -162,7 +218,7 @@ const NoteCard = ({ note }) => {
         document.addEventListener("touchend",  onEnd);
     };
 
-    // ── Render ────────────────────────────────────────────────────
+    // ── Render ──────────────────────────────────────────────────────
     return (
         <div
             ref={cardRef}
@@ -203,8 +259,10 @@ const NoteCard = ({ note }) => {
 
                 {note.owner && (
                     <div className="card-author">
-                        <div className="card-author-avatar"
-                            style={{ background: contrast, color: headerColor }}>
+                        <div
+                            className="card-author-avatar"
+                            style={{ background: contrast, color: headerColor }}
+                        >
                             {note.owner.username[0].toUpperCase()}
                         </div>
                         <span className="card-author-name" style={{ color: contrast }}>
@@ -227,18 +285,12 @@ const NoteCard = ({ note }) => {
                         setSelectedNote(note);
                     }}
                     onBlur={() => {
-                        // Don't release immediately — there may be a pending body save timer.
-                        // The timer's finally block will release when the save completes.
-                        // If no timer is pending (user didn't type), release now.
-                        if (!keyUpTimer.current) {
-                            isInteractingRef.current = false;
+                        // If a body save is still in-flight or timer is pending, don't release.
+                        // The timer's finally block will call releaseInteraction() instead.
+                        if (keyUpTimer.current !== null || bodySavingRef.current) {
+                            return;
                         }
-                        // After 1.5s debounce + network, release at most 2.5s later
-                        setTimeout(() => {
-                            if (document.activeElement !== textAreaRef.current) {
-                                isInteractingRef.current = false;
-                            }
-                        }, 2500);
+                        releaseInteraction();
                     }}
                     onInput={() => autoGrow(textAreaRef)}
                     style={{ color: textColor }}
@@ -250,7 +302,7 @@ const NoteCard = ({ note }) => {
             {note.created_at && (
                 <div className="card-footer" style={{ color: textColor }}>
                     {new Date(note.created_at).toLocaleDateString(undefined, {
-                        month: "short", day: "numeric"
+                        month: "short", day: "numeric",
                     })}
                 </div>
             )}

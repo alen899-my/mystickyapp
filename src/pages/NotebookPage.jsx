@@ -3,7 +3,7 @@ import { db } from "../utils/db";
 import { NoteContext } from "../context/NotesContext";
 import { useNavigate } from "react-router-dom";
 import "../styles/NotebookDashboard.css";
-import { Home, Plus, Folder, Search, Book, BookText, LogOut, Users } from "lucide-react";
+import { Home, Plus, Folder, Search, Book, BookText, LogOut, Users, StickyNote } from "lucide-react";
 
 const NotebookPage = () => {
     const [notebooks, setNotebooks] = useState([]);
@@ -75,7 +75,7 @@ const NotebookPage = () => {
             {/* ── Sidebar ─────────────────────────── */}
             <aside className="clean-sidebar">
                 <div className="sidebar-brand">
-                    <Book size={26} color="#ffeba1" strokeWidth={2.5} />
+                    <StickyNote size={22} color="#ffeba1" strokeWidth={2.5} />
                 </div>
                 <nav className="sidebar-nav-list">
                     <div className="sidebar-link active" title="Home">
@@ -99,7 +99,7 @@ const NotebookPage = () => {
                 {/* Top Bar */}
                 <header className="clean-top-bar">
                     <div className="search-box">
-                        <Search size={16} color="#444" strokeWidth={2} />
+                        <Search size={15} color="rgba(255,235,161,0.35)" strokeWidth={2} />
                         <input type="text" placeholder="Search notebooks..." />
                     </div>
 
@@ -123,11 +123,11 @@ const NotebookPage = () => {
                                         className="dropdown-item"
                                         onClick={() => { setShowJoinModal(true); setShowUserDropdown(false); }}
                                     >
-                                        <Users size={15} /> Join Notebook
+                                        <Users size={14} /> Join Notebook
                                     </button>
                                     <div className="dropdown-divider" />
                                     <button className="dropdown-item logout-item" onClick={handleLogout}>
-                                        <LogOut size={15} /> Logout
+                                        <LogOut size={14} /> Logout
                                     </button>
                                 </div>
                             )}
@@ -141,7 +141,7 @@ const NotebookPage = () => {
 
                         {/* Hero */}
                         <section className="clean-hero">
-                            <h1>Welcome back, {currentUser?.username || "there"} 👋</h1>
+                            <h1>Welcome back, {currentUser?.username || "there"} ✏️</h1>
                             <p>Your collaborative sticky notes workspace.</p>
                         </section>
 
@@ -157,8 +157,15 @@ const NotebookPage = () => {
                                         <p>Create a fresh canvas for your stickies</p>
                                     </div>
                                 </div>
-                                <div className="action-card" onClick={() => setShowJoinModal(true)}>
-                                    <div className="action-icon-circle" style={{ background: "rgba(255,235,161,0.1)", color: "#ffeba1" }}>
+                                <div
+                                    className="action-card"
+                                    onClick={() => setShowJoinModal(true)}
+                                    style={{ animationName: "noteSlapRight" }}
+                                >
+                                    <div
+                                        className="action-icon-circle"
+                                        style={{ background: "rgba(255,235,161,0.1)", color: "#ffeba1" }}
+                                    >
                                         <Users size={22} />
                                     </div>
                                     <div className="action-card-text">
@@ -173,7 +180,7 @@ const NotebookPage = () => {
                         <section className="clean-recent">
                             <div className="table-header-row">
                                 <h2>My Notebooks</h2>
-                                <span style={{ color: "#444", fontSize: "0.8rem" }}>
+                                <span style={{ color: "rgba(255,235,161,0.35)", fontSize: "0.9rem", fontFamily: "'Caveat', cursive" }}>
                                     {notebooks.length} {notebooks.length === 1 ? "notebook" : "notebooks"}
                                 </span>
                             </div>
@@ -192,9 +199,19 @@ const NotebookPage = () => {
                                         {notebooks.length === 0 ? (
                                             <tr>
                                                 <td colSpan="4">
-                                                    <div style={{ textAlign: "center", padding: "3rem 1rem", color: "#333" }}>
-                                                        <BookText size={40} style={{ margin: "0 auto 0.75rem", display: "block", opacity: 0.15 }} />
-                                                        <span style={{ fontSize: "0.875rem" }}>No notebooks yet — create or join one above.</span>
+                                                    <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+                                                        <BookText
+                                                            size={40}
+                                                            color="rgba(255,235,161,0.15)"
+                                                            style={{ margin: "0 auto 0.75rem", display: "block" }}
+                                                        />
+                                                        <span style={{
+                                                            fontFamily: "'Caveat', cursive",
+                                                            fontSize: "1rem",
+                                                            color: "rgba(255,235,161,0.3)"
+                                                        }}>
+                                                            No notebooks yet — create or join one above.
+                                                        </span>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -208,26 +225,58 @@ const NotebookPage = () => {
                                                 <tr key={nb.id} onClick={() => handleSelectNotebook(nb.id)}>
                                                     <td>
                                                         <div className="table-file-name">
-                                                            <Book size={16} color={isOwner ? "#ffeba1" : "#555"} style={{ flexShrink: 0, opacity: 0.8 }} />
+                                                            <Book
+                                                                size={16}
+                                                                color={isOwner ? "#ffeba1" : "rgba(255,235,161,0.3)"}
+                                                                style={{ flexShrink: 0, opacity: 0.8 }}
+                                                            />
                                                             <div style={{ minWidth: 0 }}>
-                                                                <span style={{ display: "block", fontWeight: 600, color: "#e8e8e8" }}>{nb.name}</span>
-                                                                <span style={{ fontSize: "0.7rem", color: "#444" }}>#{nb.id}</span>
+                                                                <span style={{
+                                                                    display: "block",
+                                                                    fontFamily: "'Caveat', cursive",
+                                                                    fontWeight: 700,
+                                                                    fontSize: "1rem",
+                                                                    color: isOwner ? "#ffeba1" : "rgba(255,235,161,0.7)"
+                                                                }}>
+                                                                    {nb.name}
+                                                                </span>
+                                                                <span style={{
+                                                                    fontFamily: "'Caveat', cursive",
+                                                                    fontSize: "0.75rem",
+                                                                    color: "rgba(255,235,161,0.25)"
+                                                                }}>
+                                                                    #{nb.id}
+                                                                </span>
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="table-extra-col" style={{ color: "#555", fontSize: "0.8rem" }}>{date}</td>
+                                                    <td className="table-extra-col" style={{
+                                                        color: "rgba(255,235,161,0.35)",
+                                                        fontSize: "0.88rem",
+                                                        fontFamily: "'Caveat', cursive"
+                                                    }}>
+                                                        {date}
+                                                    </td>
                                                     <td className="table-extra-col">
                                                         <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
                                                             <div style={{
-                                                                width: 24, height: 24, borderRadius: "50%",
-                                                                background: isOwner ? "rgba(255,235,161,0.12)" : "rgba(255,255,255,0.04)",
-                                                                color: isOwner ? "#ffeba1" : "#666",
+                                                                width: 24, height: 24,
+                                                                borderRadius: "3px",
+                                                                background: isOwner ? "rgba(255,235,161,0.12)" : "rgba(255,235,161,0.04)",
+                                                                color: isOwner ? "#ffeba1" : "rgba(255,235,161,0.3)",
                                                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                                                fontSize: "0.65rem", fontWeight: 800, flexShrink: 0
+                                                                fontFamily: "'Caveat', cursive",
+                                                                fontSize: "0.7rem", fontWeight: 700,
+                                                                flexShrink: 0,
+                                                                transform: "rotate(-2deg)"
                                                             }}>
                                                                 {ownerInit}
                                                             </div>
-                                                            <span style={{ color: "#666", fontSize: "0.82rem" }}>
+                                                            <span style={{
+                                                                fontFamily: "'Caveat', cursive",
+                                                                color: "rgba(255,235,161,0.45)",
+                                                                fontSize: "0.88rem"
+                                                            }}>
                                                                 {isOwner ? "You" : ownerName}
                                                             </span>
                                                         </div>
@@ -244,6 +293,7 @@ const NotebookPage = () => {
                                 </table>
                             </div>
                         </section>
+
                     </div>
                 </div>
             </main>
@@ -252,7 +302,7 @@ const NotebookPage = () => {
             {showCreateModal && (
                 <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowCreateModal(false)}>
                     <div className="sharp-modal">
-                        <h2>New Notebook</h2>
+                        <h2>New Notebook ✨</h2>
                         <p>Give your sticky workspace a name.</p>
                         <form onSubmit={handleCreateNotebook}>
                             <div className="sharp-input-group">
@@ -263,12 +313,21 @@ const NotebookPage = () => {
                                     value={newNotebookName}
                                     onChange={e => setNewNotebookName(e.target.value)}
                                     placeholder="e.g. Product Roadmap"
-                                    required autoFocus
+                                    required
+                                    autoFocus
                                 />
                             </div>
                             <div className="modal-footer-btns">
-                                <button type="button" className="sharp-btn secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
-                                <button type="submit" className="sharp-btn primary">Create</button>
+                                <button
+                                    type="button"
+                                    className="sharp-btn secondary"
+                                    onClick={() => setShowCreateModal(false)}
+                                >
+                                    Cancel
+                                </button>
+                                <button type="submit" className="sharp-btn primary">
+                                    Create →
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -278,8 +337,8 @@ const NotebookPage = () => {
             {/* ── Join Modal ───────────────────────── */}
             {showJoinModal && (
                 <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowJoinModal(false)}>
-                    <div className="sharp-modal">
-                        <h2>Join Notebook</h2>
+                    <div className="sharp-modal" style={{ transform: "rotate(0.8deg)" }}>
+                        <h2>Join the board! 🔑</h2>
                         <p>Enter the 8-character invite code.</p>
                         <form onSubmit={handleJoinNotebook}>
                             <div className="sharp-input-group">
@@ -291,18 +350,33 @@ const NotebookPage = () => {
                                     onChange={e => setJoinCode(e.target.value.toUpperCase())}
                                     placeholder="A1B2C3D4"
                                     maxLength={8}
-                                    required autoFocus
-                                    style={{ textTransform: "uppercase", letterSpacing: "6px", textAlign: "center", fontSize: "1.3rem" }}
+                                    required
+                                    autoFocus
+                                    style={{
+                                        textTransform: "uppercase",
+                                        letterSpacing: "6px",
+                                        textAlign: "center",
+                                        fontSize: "1.4rem"
+                                    }}
                                 />
                             </div>
                             <div className="modal-footer-btns">
-                                <button type="button" className="sharp-btn secondary" onClick={() => setShowJoinModal(false)}>Cancel</button>
-                                <button type="submit" className="sharp-btn primary">Join</button>
+                                <button
+                                    type="button"
+                                    className="sharp-btn secondary"
+                                    onClick={() => setShowJoinModal(false)}
+                                >
+                                    Cancel
+                                </button>
+                                <button type="submit" className="sharp-btn primary">
+                                    Join →
+                                </button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
+
         </div>
     );
 };
