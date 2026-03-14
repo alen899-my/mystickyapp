@@ -14,6 +14,12 @@
     inset: 0;
     touch-action: none;
     overscroll-behavior: none;
+    cursor: default;
+}
+
+.notes-page.canvas-dragging,
+.notes-page.canvas-dragging * {
+    cursor: grabbing !important;
 }
 
 /* Whiteboard line grid */
@@ -268,6 +274,7 @@
     flex: 1;
     padding: 10px 16px 8px;
     position: relative;
+    cursor: text;
     background-image: repeating-linear-gradient(
         to bottom,
         transparent,
@@ -283,6 +290,7 @@
     border: none;
     width: 100%;
     min-height: 140px;
+    cursor: text;
     resize: none;
     outline: none;
     font-family: 'Caveat', cursive;

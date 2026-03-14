@@ -644,7 +644,7 @@ const NotesPage = () => {
     return (
         <div
             ref={notesPageRef}
-            className="notes-page"
+            className={`notes-page ${isDragging ? "canvas-dragging" : ""}`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -653,7 +653,6 @@ const NotesPage = () => {
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             style={{
-                cursor: isDragging ? "grabbing" : "grab",
                 overflow: "hidden",
             }}
         >
