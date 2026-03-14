@@ -163,6 +163,12 @@ const NoteCard = ({ note }) => {
             String(connection.source_note_id) !== noteDomId &&
             String(connection.target_note_id) !== noteDomId
         ));
+        setSelectedNote(prev => getNoteKey(prev) === noteKey ? null : prev);
+    };
+
+    const handleSelectCard = () => {
+        setZIndex(cardRef.current);
+        setSelectedNote(note);
     };
 
     const persistBody = async (nextBody) => {
@@ -284,6 +290,8 @@ const NoteCard = ({ note }) => {
         <div
             ref={cardRef}
             className={`card ${isPendingConnectionStart ? "pending-connection-start" : ""}`}
+            onMouseDownCapture={handleSelectCard}
+            onTouchStartCapture={handleSelectCard}
             style={{
                 left: `${position.x}px`,
                 top: `${position.y}px`,
