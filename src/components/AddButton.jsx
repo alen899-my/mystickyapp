@@ -1,8 +1,5 @@
-import React from "react";
 import { Plus } from "lucide-react";
 import colors from "../assets/colors.json";
-import { useRef } from "react";
-import { db } from "../utils/db";
 import { useContext } from "react";
 import { NoteContext } from "../context/NotesContext";
 

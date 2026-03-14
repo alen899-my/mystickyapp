@@ -845,7 +845,7 @@
         font-size: 0.95rem;
     }
 
-    .clean-top-bar { padding: 0.6rem 1rem; }
+    .clean-top-bar { padding: calc(0.6rem + env(safe-area-inset-top)) 1rem 0.6rem; }
 }
 
 @media (max-width: 480px) {
