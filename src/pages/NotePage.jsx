@@ -60,6 +60,25 @@ const NotesPage = () => {
     const websocketRef = useRef(null);
     const websocketReconnectTimerRef = useRef(null);
 
+    const applyZoomFromPoint = (clientX, clientY, zoomFactor) => {
+        setZoom(prevZoom => {
+            const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
+            setCanvasOffset(prevOffset => {
+                const rect = notesPageRef.current.getBoundingClientRect();
+                const pointX = clientX - rect.left;
+                const pointY = clientY - rect.top;
+                const canvasPointX = (pointX - prevOffset.x) / prevZoom;
+                const canvasPointY = (pointY - prevOffset.y) / prevZoom;
+
+                return {
+                    x: pointX - canvasPointX * nextZoom,
+                    y: pointY - canvasPointY * nextZoom,
+                };
+            });
+            return nextZoom;
+        });
+    };
+
     const mergeIncomingNote = (previousNotes, incomingNote) => {
         const normalizedNote = normalizeNote(incomingNote);
         const incomingId = String(normalizedNote.$id);
@@ -140,64 +159,26 @@ const NotesPage = () => {
         };
     }, [id, setCurrentNotebookId]);
 
-    useEffect(() => {
-        const applyZoomFromPoint = (clientX, clientY, zoomFactor) => {
-            setZoom(prevZoom => {
-                const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
-                setCanvasOffset(prevOffset => {
-                    const rect = notesPageRef.current.getBoundingClientRect();
-                    const pointX = clientX - rect.left;
-                    const pointY = clientY - rect.top;
-                    const canvasPointX = (pointX - prevOffset.x) / prevZoom;
-                    const canvasPointY = (pointY - prevOffset.y) / prevZoom;
+    const handleWheelZoom = (event) => {
+        event.preventDefault();
 
-                    return {
-                        x: pointX - canvasPointX * nextZoom,
-                        y: pointY - canvasPointY * nextZoom,
-                    };
-                });
-                return nextZoom;
-            });
-        };
+        if (event.shiftKey && !event.ctrlKey && !event.metaKey) {
+            setCanvasOffset(prev => ({
+                x: prev.x - event.deltaX,
+                y: prev.y - event.deltaY,
+            }));
+            return;
+        }
 
-        const handleZoom = (event) => {
-            event.preventDefault();
+        const dominantDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+            ? event.deltaY
+            : event.deltaX;
+        const delta = -dominantDelta;
+        const intensity = event.ctrlKey || event.metaKey ? 80 : 180;
+        const zoomFactor = Math.pow(1.22, delta / intensity);
 
-            if (event.shiftKey && !event.ctrlKey && !event.metaKey) {
-                setCanvasOffset(prev => ({
-                    x: prev.x - event.deltaX,
-                    y: prev.y - event.deltaY,
-                }));
-                return;
-            }
-
-            const dominantDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
-                ? event.deltaY
-                : event.deltaX;
-            const delta = -dominantDelta;
-            const intensity = event.ctrlKey || event.metaKey ? 80 : 180;
-            const zoomFactor = Math.pow(1.22, delta / intensity);
-
-            applyZoomFromPoint(event.clientX, event.clientY, zoomFactor);
-        };
-
-        const blockNativePinch = (event) => {
-            if (event.touches.length >= 2) {
-                event.preventDefault();
-            }
-        };
-
-        const page = notesPageRef.current;
-        if (!page) return undefined;
-
-        page.addEventListener("wheel", handleZoom, { passive: false });
-        page.addEventListener("touchmove", blockNativePinch, { passive: false });
-
-        return () => {
-            page.removeEventListener("wheel", handleZoom);
-            page.removeEventListener("touchmove", blockNativePinch);
-        };
-    }, [setCanvasOffset, setZoom]);
+        applyZoomFromPoint(event.clientX, event.clientY, zoomFactor);
+    };
 
     const handleMouseDown = (event) => {
         const onCanvas =
@@ -627,6 +608,8 @@ const NotesPage = () => {
         <div
             ref={notesPageRef}
             className="notes-page"
+            onWheel={handleWheelZoom}
+            onWheelCapture={handleWheelZoom}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
