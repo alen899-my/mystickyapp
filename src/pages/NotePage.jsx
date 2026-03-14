@@ -141,34 +141,44 @@ const NotesPage = () => {
     }, [id, setCurrentNotebookId]);
 
     useEffect(() => {
-        const handleZoom = (event) => {
-            if (event.ctrlKey || event.metaKey) {
-                event.preventDefault();
-                const delta = -event.deltaY;
-                const zoomFactor = Math.pow(1.35, delta / 80);
+        const applyZoomFromPoint = (clientX, clientY, zoomFactor) => {
+            setZoom(prevZoom => {
+                const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
+                setCanvasOffset(prevOffset => {
+                    const rect = notesPageRef.current.getBoundingClientRect();
+                    const pointX = clientX - rect.left;
+                    const pointY = clientY - rect.top;
+                    const canvasPointX = (pointX - prevOffset.x) / prevZoom;
+                    const canvasPointY = (pointY - prevOffset.y) / prevZoom;
 
-                setZoom(prevZoom => {
-                    const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
-                    setCanvasOffset(prevOffset => {
-                        const rect = notesPageRef.current.getBoundingClientRect();
-                        const mouseX = event.clientX - rect.left;
-                        const mouseY = event.clientY - rect.top;
-                        const canvasMouseX = (mouseX - prevOffset.x) / prevZoom;
-                        const canvasMouseY = (mouseY - prevOffset.y) / prevZoom;
-
-                        return {
-                            x: mouseX - canvasMouseX * nextZoom,
-                            y: mouseY - canvasMouseY * nextZoom,
-                        };
-                    });
-                    return nextZoom;
+                    return {
+                        x: pointX - canvasPointX * nextZoom,
+                        y: pointY - canvasPointY * nextZoom,
+                    };
                 });
-            } else {
+                return nextZoom;
+            });
+        };
+
+        const handleZoom = (event) => {
+            event.preventDefault();
+
+            if (event.shiftKey && !event.ctrlKey && !event.metaKey) {
                 setCanvasOffset(prev => ({
                     x: prev.x - event.deltaX,
                     y: prev.y - event.deltaY,
                 }));
+                return;
             }
+
+            const dominantDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+                ? event.deltaY
+                : event.deltaX;
+            const delta = -dominantDelta;
+            const intensity = event.ctrlKey || event.metaKey ? 80 : 180;
+            const zoomFactor = Math.pow(1.22, delta / intensity);
+
+            applyZoomFromPoint(event.clientX, event.clientY, zoomFactor);
         };
 
         const blockNativePinch = (event) => {
