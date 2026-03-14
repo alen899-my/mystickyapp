@@ -1,0 +1,190 @@
+.sticky-loader-shell {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    text-align: center;
+}
+
+.sticky-loader-shell-screen {
+    min-height: 100vh;
+    width: 100%;
+    padding: 2rem;
+    background:
+        radial-gradient(circle at top, rgba(255, 235, 161, 0.12), transparent 40%),
+        linear-gradient(180deg, rgba(15, 11, 4, 0.96), rgba(10, 8, 3, 1));
+}
+
+.sticky-loader-scene {
+    position: relative;
+    width: var(--loader-size, 96px);
+    height: calc(var(--loader-size, 96px) * 0.92);
+    filter: drop-shadow(0 12px 26px rgba(0, 0, 0, 0.22));
+}
+
+.sticky-loader-shadow {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    width: 72%;
+    height: 12%;
+    background: radial-gradient(circle, rgba(61, 44, 0, 0.28), transparent 72%);
+    transform: translateX(-50%);
+    animation: stickyLoaderShadow 1.4s ease-in-out infinite;
+}
+
+.sticky-loader-note {
+    position: absolute;
+    left: 50%;
+    width: 68%;
+    aspect-ratio: 1 / 1;
+    border-radius: 2px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14%), calc(100% - 14%) 100%, 0 100%);
+    transform-origin: 50% 100%;
+}
+
+.sticky-loader-note span {
+    position: absolute;
+    left: 17%;
+    right: 17%;
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(61, 44, 0, 0.16);
+}
+
+.sticky-loader-note span:nth-child(1) {
+    top: 35%;
+}
+
+.sticky-loader-note span:nth-child(2) {
+    top: 50%;
+}
+
+.sticky-loader-note span:nth-child(3) {
+    top: 65%;
+    width: 48%;
+}
+
+.sticky-loader-note-front {
+    top: 8%;
+    z-index: 2;
+    background:
+        linear-gradient(180deg, rgba(255, 247, 194, 1), rgba(247, 225, 128, 1));
+    box-shadow:
+        0 2px 0 rgba(255, 255, 255, 0.45) inset,
+        0 0 0 1px rgba(61, 44, 0, 0.08) inset;
+    transform: translateX(-50%) rotate(-4deg);
+    animation: stickyLoaderFront 1.4s cubic-bezier(0.68, -0.1, 0.32, 1.1) infinite;
+}
+
+.sticky-loader-note-front::after,
+.sticky-loader-note-back::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 14%;
+    height: 14%;
+    background: linear-gradient(225deg, rgba(184, 161, 86, 0.95) 44%, transparent 45%);
+}
+
+.sticky-loader-note-back {
+    top: 14%;
+    z-index: 1;
+    background:
+        linear-gradient(180deg, rgba(255, 237, 163, 0.76), rgba(244, 201, 96, 0.82));
+    transform: translateX(-44%) rotate(8deg);
+    animation: stickyLoaderBack 1.4s cubic-bezier(0.68, -0.1, 0.32, 1.1) infinite;
+}
+
+.sticky-loader-tape {
+    position: absolute;
+    top: -7%;
+    left: 50%;
+    width: 34%;
+    height: 12%;
+    border-radius: 2px;
+    background: rgba(255, 250, 215, 0.72);
+    transform: translateX(-50%) rotate(3deg);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+}
+
+.sticky-loader-pin {
+    position: absolute;
+    top: 4%;
+    left: 56%;
+    width: 12%;
+    aspect-ratio: 1;
+    border-radius: 999px;
+    background:
+        radial-gradient(circle at 35% 35%, #ffffff, #d92828 42%, #971111 100%);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.45) inset,
+        0 3px 8px rgba(0, 0, 0, 0.22);
+    z-index: 3;
+    animation: stickyLoaderPin 1.4s ease-in-out infinite;
+}
+
+.sticky-loader-message {
+    font-family: "Caveat", cursive;
+    font-size: clamp(1rem, 1.5vw, 1.3rem);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: rgba(255, 235, 161, 0.88);
+}
+
+@keyframes stickyLoaderFront {
+    0%,
+    100% {
+        transform: translateX(-50%) translateY(0) rotate(-4deg);
+    }
+
+    50% {
+        transform: translateX(-50%) translateY(-10%) rotate(1deg);
+    }
+}
+
+@keyframes stickyLoaderBack {
+    0%,
+    100% {
+        transform: translateX(-44%) translateY(0) rotate(8deg);
+    }
+
+    50% {
+        transform: translateX(-44%) translateY(-4%) rotate(12deg);
+    }
+}
+
+@keyframes stickyLoaderPin {
+    0%,
+    100% {
+        transform: translateY(0) scale(1);
+    }
+
+    50% {
+        transform: translateY(-6%) scale(1.04);
+    }
+}
+
+@keyframes stickyLoaderShadow {
+    0%,
+    100% {
+        opacity: 0.38;
+        transform: translateX(-50%) scaleX(1);
+    }
+
+    50% {
+        opacity: 0.22;
+        transform: translateX(-50%) scaleX(0.88);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sticky-loader-shadow,
+    .sticky-loader-note-front,
+    .sticky-loader-note-back,
+    .sticky-loader-pin {
+        animation: none;
+    }
+}

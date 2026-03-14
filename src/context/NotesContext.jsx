@@ -318,9 +318,7 @@ const NotesProvider = ({ children }) => {
     return (
         <NoteContext.Provider value={contextData}>
             {loading ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}>
-                    <Spinner size="100" />
-                </div>
+                <Spinner size={118} message="Arranging your notes..." fullScreen />
             ) : (
                 children
             )}

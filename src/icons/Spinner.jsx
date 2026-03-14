@@ -1,23 +1,40 @@
-const Spinner = ({ color = "#fff", size = "20" }) => {
+import PropTypes from "prop-types";
+import "../styles/Loader.css";
+
+const Spinner = ({ size = 96, message = "Loading notes...", fullScreen = false }) => {
+    const wrapperClassName = fullScreen ? "sticky-loader-shell sticky-loader-shell-screen" : "sticky-loader-shell";
+
     return (
-        <svg
-            className="spinner"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width={size}
-            height={size}
-            stroke={color}
-            fill="none"
-            strokeWidth="1.5"
+        <div
+            className={wrapperClassName}
+            style={{ "--loader-size": `${size}px` }}
+            role="status"
+            aria-live="polite"
         >
-            <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 20c-4.416 0-8-3.584-8-8s4.448-7.112 4.448-7.112m0 0v3.616m0-3.616h-4M12 4c4.416 0 8 3.552 8 8 0 5.336-4.448 8-4.448 8m0 0h4m-4 0v-3.552"
-            ></path>
-        </svg>
+            <div className="sticky-loader-scene">
+                <div className="sticky-loader-shadow" />
+                <div className="sticky-loader-note sticky-loader-note-back">
+                    <span />
+                    <span />
+                    <span />
+                </div>
+                <div className="sticky-loader-note sticky-loader-note-front">
+                    <div className="sticky-loader-tape" />
+                    <span />
+                    <span />
+                    <span />
+                </div>
+                <div className="sticky-loader-pin" />
+            </div>
+            <p className="sticky-loader-message">{message}</p>
+        </div>
     );
 };
- 
-export default Spinner;
 
+Spinner.propTypes = {
+    fullScreen: PropTypes.bool,
+    message: PropTypes.string,
+    size: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+};
+
+export default Spinner;

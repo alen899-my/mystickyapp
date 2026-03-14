@@ -52,11 +52,7 @@ const PrivateRoute = ({ children }) => {
     }, []);
 
     if (authState === "checking") {
-        return (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-                <Spinner size="88" />
-            </div>
-        );
+        return <Spinner size={112} message="Checking your board..." fullScreen />;
     }
 
     return authState === "authenticated" ? children : <Navigate to="/login" replace />;
@@ -108,11 +104,7 @@ const PublicRoute = ({ children }) => {
     }, []);
 
     if (authState === "checking") {
-        return (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-                <Spinner size="88" />
-            </div>
-        );
+        return <Spinner size={112} message="Opening your sticky space..." fullScreen />;
     }
 
     return authState === "authenticated" ? <Navigate to="/" replace /> : children;
