@@ -127,6 +127,58 @@ const db = {
             }
         },
     },
+    connections: {
+        create: async (payload) => {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_ENDPOINT}/connections`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            return { ...data, $id: data.id };
+        },
+        delete: async (id) => {
+            const token = localStorage.getItem("token");
+            await fetch(`${API_ENDPOINT}/connections/${id}`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            return { success: true };
+        },
+        list: async (notebookId) => {
+            const token = localStorage.getItem("token");
+            if (!token || !notebookId) {
+                return { documents: [] };
+            }
+
+            try {
+                const response = await fetch(`${API_ENDPOINT}/notebooks/${notebookId}/connections`, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+
+                if (response.status === 401) {
+                    localStorage.removeItem("token");
+                    window.location.replace("/login");
+                    return { documents: [] };
+                }
+
+                const data = await response.json();
+                return {
+                    documents: (Array.isArray(data) ? data : []).map((connection) => ({
+                        ...connection,
+                        $id: connection.id,
+                    })),
+                };
+            } catch (error) {
+                console.error("Fetch connections error:", error);
+                return { documents: [] };
+            }
+        },
+    },
     auth: {
         login: async (username, password) => {
             const formData = new FormData();

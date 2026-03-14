@@ -1,179 +1,203 @@
 import { useContext, useEffect, useState, useRef } from "react";
 import { NoteContext } from "../context/NotesContext";
+import ConnectionLayer from "../components/ConnectionLayer";
 import NoteCard from "../components/NoteCard";
 import Controls from "../components/Controls";
 import { db } from "../utils/db";
 import { useNavigate, useParams } from "react-router-dom";
-import { LogOut, UserPlus, DoorOpen, Copy, Check, ArrowLeft } from "lucide-react";
+import { LogOut, UserPlus, DoorOpen, Copy, Check, ArrowLeft, X } from "lucide-react";
 import "../styles/NoteCanvas.css";
+import { useDialog } from "../context/DialogContext";
 
 const NotesPage = () => {
     const {
-        notes, setNotes,
-        currentNotebookId, setCurrentNotebookId,
-        canvasOffset, setCanvasOffset,
-        zoom, setZoom
+        notes,
+        setNotes,
+        connections,
+        setConnections,
+        selectedNote,
+        currentNotebookId,
+        setCurrentNotebookId,
+        canvasOffset,
+        setCanvasOffset,
+        zoom,
+        setZoom,
+        pendingConnectionNoteId,
+        cancelPendingConnection,
+        pendingUnlinkNoteId,
+        cancelPendingUnlink,
+        deleteConnectionsForNote,
+        selectedConnectionId,
+        setSelectedConnectionId,
+        deleteConnectionById,
     } = useContext(NoteContext);
 
-    const [currentUser, setCurrentUser]         = useState(null);
-    const [showDropdown, setShowDropdown]       = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
+    const [showDropdown, setShowDropdown] = useState(false);
     const [showInviteModal, setShowInviteModal] = useState(false);
-    const [inviteCode, setInviteCode]           = useState("");
-    const [copied, setCopied]                   = useState(false);
+    const [inviteCode, setInviteCode] = useState("");
+    const [copied, setCopied] = useState(false);
+    const [copiedFlow, setCopiedFlow] = useState(false);
 
-    const navigate     = useNavigate();
-    const { id }       = useParams();
+    const { showAlert, showConfirm } = useDialog();
+    const navigate = useNavigate();
+    const { id } = useParams();
     const notesPageRef = useRef(null);
+    const copyFlowTimerRef = useRef(null);
 
-    // Canvas pan state
-    const [startPos, setStartPos]     = useState({ x: 0, y: 0 });
+    const [startPos, setStartPos] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
 
-    // Pinch-to-zoom refs (mobile)
     const lastPinchDistRef = useRef(null);
-    const lastPinchMidRef  = useRef(null);
+    const lastPinchMidRef = useRef(null);
 
-    // Sync URL param → context
     useEffect(() => {
         if (id) setCurrentNotebookId(id);
     }, [id, setCurrentNotebookId]);
 
-    // Figma-style zoom: intercept ctrl+wheel, zoom into cursor
     useEffect(() => {
-        const handleZoom = (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                const delta      = -e.deltaY;
+        const handleZoom = (event) => {
+            if (event.ctrlKey || event.metaKey) {
+                event.preventDefault();
+                const delta = -event.deltaY;
                 const zoomFactor = Math.pow(1.35, delta / 80);
 
                 setZoom(prevZoom => {
                     const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
                     setCanvasOffset(prevOffset => {
-                        const rect    = notesPageRef.current.getBoundingClientRect();
-                        const mouseX  = e.clientX - rect.left;
-                        const mouseY  = e.clientY - rect.top;
-                        const cMouseX = (mouseX - prevOffset.x) / prevZoom;
-                        const cMouseY = (mouseY - prevOffset.y) / prevZoom;
+                        const rect = notesPageRef.current.getBoundingClientRect();
+                        const mouseX = event.clientX - rect.left;
+                        const mouseY = event.clientY - rect.top;
+                        const canvasMouseX = (mouseX - prevOffset.x) / prevZoom;
+                        const canvasMouseY = (mouseY - prevOffset.y) / prevZoom;
+
                         return {
-                            x: mouseX - cMouseX * nextZoom,
-                            y: mouseY - cMouseY * nextZoom,
+                            x: mouseX - canvasMouseX * nextZoom,
+                            y: mouseY - canvasMouseY * nextZoom,
                         };
                     });
                     return nextZoom;
                 });
             } else {
                 setCanvasOffset(prev => ({
-                    x: prev.x - e.deltaX,
-                    y: prev.y - e.deltaY,
+                    x: prev.x - event.deltaX,
+                    y: prev.y - event.deltaY,
                 }));
             }
         };
 
-        const blockNativePinch = (e) => {
-            if (e.touches.length >= 2) e.preventDefault();
+        const blockNativePinch = (event) => {
+            if (event.touches.length >= 2) {
+                event.preventDefault();
+            }
         };
 
         const page = notesPageRef.current;
-        if (page) {
-            page.addEventListener("wheel",     handleZoom,       { passive: false });
-            page.addEventListener("touchmove", blockNativePinch, { passive: false });
-        }
-        return () => {
-            if (page) {
-                page.removeEventListener("wheel",     handleZoom);
-                page.removeEventListener("touchmove", blockNativePinch);
-            }
-        };
-    }, [setZoom, setCanvasOffset]);
+        if (!page) return undefined;
 
-    // ── Mouse pan ──────────────────────────────────────────────────
-    const handleMouseDown = (e) => {
+        page.addEventListener("wheel", handleZoom, { passive: false });
+        page.addEventListener("touchmove", blockNativePinch, { passive: false });
+
+        return () => {
+            page.removeEventListener("wheel", handleZoom);
+            page.removeEventListener("touchmove", blockNativePinch);
+        };
+    }, [setCanvasOffset, setZoom]);
+
+    const handleMouseDown = (event) => {
         const onCanvas =
-            e.button === 1 ||
-            e.target.classList.contains("notes-page") ||
-            e.target.classList.contains("grid-background") ||
-            e.target.classList.contains("canvas");
+            event.button === 1 ||
+            event.target.classList.contains("notes-page") ||
+            event.target.classList.contains("grid-background") ||
+            event.target.classList.contains("canvas");
 
         if (onCanvas) {
+            setSelectedConnectionId(null);
             setIsDragging(true);
-            setStartPos({ x: e.clientX - canvasOffset.x, y: e.clientY - canvasOffset.y });
+            setStartPos({ x: event.clientX - canvasOffset.x, y: event.clientY - canvasOffset.y });
         }
     };
 
-    const handleMouseMove = (e) => {
+    const handleMouseMove = (event) => {
         if (isDragging) {
-            setCanvasOffset({ x: e.clientX - startPos.x, y: e.clientY - startPos.y });
+            setCanvasOffset({ x: event.clientX - startPos.x, y: event.clientY - startPos.y });
         }
     };
 
     const handleMouseUp = () => setIsDragging(false);
 
-    // ── Touch pan + pinch zoom ─────────────────────────────────────
-    const getTouchDist = (t1, t2) =>
-        Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    const getTouchDist = (firstTouch, secondTouch) =>
+        Math.hypot(secondTouch.clientX - firstTouch.clientX, secondTouch.clientY - firstTouch.clientY);
 
-    const getTouchMid = (t1, t2) => ({
-        x: (t1.clientX + t2.clientX) / 2,
-        y: (t1.clientY + t2.clientY) / 2,
+    const getTouchMid = (firstTouch, secondTouch) => ({
+        x: (firstTouch.clientX + secondTouch.clientX) / 2,
+        y: (firstTouch.clientY + secondTouch.clientY) / 2,
     });
 
-    const handleTouchStart = (e) => {
-        if (e.touches.length === 2) {
+    const handleTouchStart = (event) => {
+        if (event.touches.length === 2) {
             setIsDragging(false);
-            lastPinchDistRef.current = getTouchDist(e.touches[0], e.touches[1]);
-            lastPinchMidRef.current  = getTouchMid(e.touches[0], e.touches[1]);
+            lastPinchDistRef.current = getTouchDist(event.touches[0], event.touches[1]);
+            lastPinchMidRef.current = getTouchMid(event.touches[0], event.touches[1]);
         } else if (
-            e.touches.length === 1 &&
-            (e.target.classList.contains("notes-page") ||
-             e.target.classList.contains("grid-background") ||
-             e.target.classList.contains("canvas"))
+            event.touches.length === 1 &&
+            (
+                event.target.classList.contains("notes-page") ||
+                event.target.classList.contains("grid-background") ||
+                event.target.classList.contains("canvas")
+            )
         ) {
+            setSelectedConnectionId(null);
             setIsDragging(true);
-            const t = e.touches[0];
-            setStartPos({ x: t.clientX - canvasOffset.x, y: t.clientY - canvasOffset.y });
+            const touch = event.touches[0];
+            setStartPos({ x: touch.clientX - canvasOffset.x, y: touch.clientY - canvasOffset.y });
         }
     };
 
-    const handleTouchMove = (e) => {
-        if (e.touches.length === 2) {
-            e.preventDefault();
-            const newDist = getTouchDist(e.touches[0], e.touches[1]);
-            const newMid  = getTouchMid(e.touches[0], e.touches[1]);
-            const prev    = lastPinchDistRef.current;
+    const handleTouchMove = (event) => {
+        if (event.touches.length === 2) {
+            event.preventDefault();
+            const newDistance = getTouchDist(event.touches[0], event.touches[1]);
+            const newMid = getTouchMid(event.touches[0], event.touches[1]);
+            const previousDistance = lastPinchDistRef.current;
 
-            if (prev && prev > 0) {
-                const zoomFactor = newDist / prev;
+            if (previousDistance && previousDistance > 0) {
+                const zoomFactor = newDistance / previousDistance;
+
                 setZoom(prevZoom => {
                     const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
                     setCanvasOffset(prevOffset => {
-                        const rect  = notesPageRef.current.getBoundingClientRect();
-                        const midX  = newMid.x - rect.left;
-                        const midY  = newMid.y - rect.top;
-                        const cMidX = (midX - prevOffset.x) / prevZoom;
-                        const cMidY = (midY - prevOffset.y) / prevZoom;
-                        return { x: midX - cMidX * nextZoom, y: midY - cMidY * nextZoom };
+                        const rect = notesPageRef.current.getBoundingClientRect();
+                        const midX = newMid.x - rect.left;
+                        const midY = newMid.y - rect.top;
+                        const canvasMidX = (midX - prevOffset.x) / prevZoom;
+                        const canvasMidY = (midY - prevOffset.y) / prevZoom;
+
+                        return {
+                            x: midX - canvasMidX * nextZoom,
+                            y: midY - canvasMidY * nextZoom,
+                        };
                     });
                     return nextZoom;
                 });
             }
 
-            lastPinchDistRef.current = newDist;
-            lastPinchMidRef.current  = newMid;
-        } else if (isDragging && e.touches.length === 1) {
-            const t = e.touches[0];
-            setCanvasOffset({ x: t.clientX - startPos.x, y: t.clientY - startPos.y });
+            lastPinchDistRef.current = newDistance;
+            lastPinchMidRef.current = newMid;
+        } else if (isDragging && event.touches.length === 1) {
+            const touch = event.touches[0];
+            setCanvasOffset({ x: touch.clientX - startPos.x, y: touch.clientY - startPos.y });
         }
     };
 
-    const handleTouchEnd = (e) => {
-        if (e.touches.length < 2) {
+    const handleTouchEnd = (event) => {
+        if (event.touches.length < 2) {
             lastPinchDistRef.current = null;
-            lastPinchMidRef.current  = null;
+            lastPinchMidRef.current = null;
         }
-        if (e.touches.length === 0) setIsDragging(false);
+        if (event.touches.length === 0) setIsDragging(false);
     };
 
-    // ── Auth ───────────────────────────────────────────────────────
     const handleLogout = () => {
         localStorage.removeItem("token");
         navigate("/login");
@@ -181,13 +205,18 @@ const NotesPage = () => {
 
     useEffect(() => {
         db.auth.getMe()
-            .then(r => r.ok && r.json().then(setCurrentUser))
-            .catch(err => console.error("Failed to fetch user:", err));
+            .then(response => response.ok && response.json().then(setCurrentUser))
+            .catch(error => console.error("Failed to fetch user:", error));
     }, []);
 
-    // ── Polling — conservative merge that never overwrites local state ──
     useEffect(() => {
-        if (!currentNotebookId) return;
+        return () => {
+            clearTimeout(copyFlowTimerRef.current);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!currentNotebookId) return undefined;
 
         const pollNotes = async () => {
             try {
@@ -197,36 +226,27 @@ const NotesPage = () => {
                 const serverNotes = result.documents;
 
                 setNotes(prev => {
-                    const serverIds = new Set(serverNotes.map(n => n.$id));
-
-                    // Keep any optimistic (temp-id) notes that haven't been
-                    // confirmed by the server yet
-                    const stillPending = prev.filter(
-                        n => typeof n.$id === "string" &&
-                             n.$id.startsWith("temp-") &&
-                             !serverIds.has(n.$id)
+                    const serverIds = new Set(serverNotes.map(note => note.$id));
+                    const stillPending = prev.filter(note =>
+                        typeof note.$id === "string" &&
+                        note.$id.startsWith("temp-") &&
+                        !serverIds.has(note.$id)
                     );
 
-                    // Build a lookup for current local notes
-                    const prevById = new Map(prev.map(n => [n.$id, n]));
-
+                    const previousById = new Map(prev.map(note => [note.$id, note]));
                     const merged = serverNotes.map(serverNote => {
-                        const local = prevById.get(serverNote.$id);
+                        const localNote = previousById.get(serverNote.$id);
+                        if (!localNote) return serverNote;
 
-                        if (!local) return serverNote; // brand-new note from another user
-
-                        // Always preserve cid so the React key is stable and the
-                        // component is never unmounted/remounted on a poll tick.
-                        const base = local.cid
-                            ? { ...serverNote, cid: local.cid }
+                        const base = localNote.cid
+                            ? { ...serverNote, cid: localNote.cid }
                             : { ...serverNote };
 
-                        // If user modified this recently, protect its fields from being overwritten by stale polls
-                        if (local.__localEdit && Date.now() - local.__localEdit < 10000) {
-                            base.position = local.position;
-                            base.body = local.body;
-                            base.colors = local.colors;
-                            base.__localEdit = local.__localEdit;
+                        if (localNote.__localEdit && Date.now() - localNote.__localEdit < 10000) {
+                            base.position = localNote.position;
+                            base.body = localNote.body;
+                            base.colors = localNote.colors;
+                            base.__localEdit = localNote.__localEdit;
                         }
 
                         return base;
@@ -234,8 +254,8 @@ const NotesPage = () => {
 
                     return [...merged, ...stillPending];
                 });
-            } catch (err) {
-                console.error("Polling error:", err);
+            } catch (error) {
+                console.error("Polling error:", error);
             }
         };
 
@@ -244,7 +264,42 @@ const NotesPage = () => {
         return () => clearInterval(interval);
     }, [currentNotebookId, setNotes]);
 
-    // ── Invite ─────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!currentNotebookId) return undefined;
+
+        const pollConnections = async () => {
+            try {
+                const result = await db.connections.list(currentNotebookId);
+                if (result.documents) {
+                    setConnections(result.documents);
+                }
+            } catch (error) {
+                console.error("Connection polling error:", error);
+            }
+        };
+
+        pollConnections();
+        const interval = setInterval(pollConnections, 6000);
+        return () => clearInterval(interval);
+    }, [currentNotebookId, setConnections]);
+
+    useEffect(() => {
+        if (!selectedConnectionId) return undefined;
+
+        const handleKeyDown = (event) => {
+            const activeTag = document.activeElement?.tagName;
+            if (activeTag === "TEXTAREA" || activeTag === "INPUT") return;
+
+            if (event.key === "Delete" || event.key === "Backspace") {
+                event.preventDefault();
+                deleteConnectionById(selectedConnectionId);
+            }
+        };
+
+        document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [deleteConnectionById, selectedConnectionId]);
+
     const handleInvite = async () => {
         try {
             const result = await db.notebooks.invite(currentNotebookId);
@@ -253,35 +308,134 @@ const NotesPage = () => {
                 setShowInviteModal(true);
                 setShowDropdown(false);
             } else {
-                alert("Only the owner can generate an invite code.");
+                await showAlert({
+                    title: "Owner access only",
+                    message: "Only the notebook owner can generate an invite code.",
+                });
             }
-        } catch (err) {
-            console.error("Invite error:", err);
+        } catch (error) {
+            console.error("Invite error:", error);
         }
     };
 
     const handleLeave = async () => {
-        if (!window.confirm("Leave this shared notebook?")) return;
+        const confirmed = await showConfirm({
+            title: "Leave notebook?",
+            message: "Leave this shared notebook?",
+            confirmText: "Leave",
+            cancelText: "Stay",
+            tone: "warning",
+        });
+        if (!confirmed) return;
+
         try {
             const result = await db.notebooks.leave(currentNotebookId);
             if (result.message === "Left successfully") {
                 navigate("/");
             } else {
-                alert(result.detail || "Owners cannot leave. Delete the notebook instead.");
+                await showAlert({
+                    title: "Could not leave notebook",
+                    message: result.detail || "Owners cannot leave. Delete the notebook instead.",
+                });
             }
-        } catch (err) {
-            console.error("Leave error:", err);
+        } catch (error) {
+            console.error("Leave error:", error);
         }
     };
 
-    // Close dropdown when clicking outside
     useEffect(() => {
-        const close = (e) => {
-            if (!e.target.closest(".user-profile-nav")) setShowDropdown(false);
+        const closeDropdown = (event) => {
+            if (!event.target.closest(".user-profile-nav")) {
+                setShowDropdown(false);
+            }
         };
-        document.addEventListener("click", close);
-        return () => document.removeEventListener("click", close);
+
+        document.addEventListener("click", closeDropdown);
+        return () => document.removeEventListener("click", closeDropdown);
     }, []);
+
+    const selectedNoteId = selectedNote ? String(selectedNote.$id) : null;
+
+    const getConnectedNotesInCreationOrder = () => {
+        if (!selectedNoteId) return [];
+
+        const noteById = new Map(notes.map(note => [String(note.$id), note]));
+        if (!noteById.has(selectedNoteId)) return [];
+
+        const visited = new Set([selectedNoteId]);
+        const queue = [selectedNoteId];
+
+        while (queue.length) {
+            const currentId = queue.shift();
+
+            connections.forEach(connection => {
+                const sourceId = String(connection.source_note_id);
+                const targetId = String(connection.target_note_id);
+
+                if (sourceId === currentId && !visited.has(targetId)) {
+                    visited.add(targetId);
+                    queue.push(targetId);
+                }
+
+                if (targetId === currentId && !visited.has(sourceId)) {
+                    visited.add(sourceId);
+                    queue.push(sourceId);
+                }
+            });
+        }
+
+        return Array.from(visited)
+            .map(noteId => noteById.get(noteId))
+            .filter(Boolean)
+            .sort((left, right) => {
+                const leftTime = left.created_at ? new Date(left.created_at).getTime() : 0;
+                const rightTime = right.created_at ? new Date(right.created_at).getTime() : 0;
+
+                if (leftTime !== rightTime) {
+                    return leftTime - rightTime;
+                }
+
+                return Number(left.$id) - Number(right.$id);
+            });
+    };
+
+    const connectedNotes = getConnectedNotesInCreationOrder();
+
+    const handleCopyConnectedNotes = async () => {
+        if (!connectedNotes.length) {
+            await showAlert({
+                title: "Select a note first",
+                message: "Choose one note in the workflow, then use Copy Flow.",
+            });
+            return;
+        }
+
+        const combinedText = connectedNotes
+            .map(note => (note.body || "").trim())
+            .filter(Boolean)
+            .join("\n\n");
+
+        if (!combinedText) {
+            await showAlert({
+                title: "Nothing to copy yet",
+                message: "The selected flow has no note text to copy yet.",
+            });
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(combinedText);
+            setCopiedFlow(true);
+            clearTimeout(copyFlowTimerRef.current);
+            copyFlowTimerRef.current = setTimeout(() => setCopiedFlow(false), 2000);
+        } catch (error) {
+            console.error("Copy flow error:", error);
+            await showAlert({
+                title: "Copy failed",
+                message: "Could not copy the connected notes. Please try again.",
+            });
+        }
+    };
 
     return (
         <div
@@ -299,7 +453,6 @@ const NotesPage = () => {
                 overflow: "hidden",
             }}
         >
-            {/* Dot grid overlay */}
             <div
                 className="grid-background"
                 style={{
@@ -308,19 +461,35 @@ const NotesPage = () => {
                 }}
             />
 
-            {/* ── Top Bar ──────────────────────────────────────────── */}
             <header className="clean-top-bar">
-                <button className="back-btn" onClick={() => navigate("/")}>
-                    <ArrowLeft size={15} strokeWidth={2.5} />
-                    Dashboard
-                </button>
+                <div className="canvas-top-actions">
+                    <button className="back-btn" onClick={() => navigate("/")}>
+                        <ArrowLeft size={15} strokeWidth={2.5} />
+                        Dashboard
+                    </button>
+
+                    <button
+                        className={`canvas-copy-btn ${connectedNotes.length ? "active" : ""}`}
+                        onClick={handleCopyConnectedNotes}
+                        disabled={!connectedNotes.length}
+                        title={connectedNotes.length ? "Copy connected notes in creation order" : "Select a note to copy its connected flow"}
+                    >
+                        {copiedFlow
+                            ? <Check size={15} strokeWidth={2.5} />
+                            : <Copy size={15} strokeWidth={2.5} />
+                        }
+                        {copiedFlow
+                            ? "Copied"
+                            : connectedNotes.length > 1
+                                ? `Copy Flow (${connectedNotes.length})`
+                                : "Copy Flow"
+                        }
+                    </button>
+                </div>
 
                 {currentUser && (
                     <div className="user-profile-nav">
-                        <div
-                            className="mini-avatar"
-                            onClick={() => setShowDropdown(v => !v)}
-                        >
+                        <div className="mini-avatar" onClick={() => setShowDropdown(prev => !prev)}>
                             {currentUser.username[0].toUpperCase()}
                         </div>
 
@@ -350,25 +519,27 @@ const NotesPage = () => {
                 )}
             </header>
 
-            {/* ── Invite Modal ──────────────────────────────────────── */}
             {showInviteModal && (
                 <div
                     className="modal-backdrop"
-                    onClick={e => e.target === e.currentTarget && setShowInviteModal(false)}
+                    onClick={event => event.target === event.currentTarget && setShowInviteModal(false)}
                 >
                     <div className="sharp-modal" style={{ textAlign: "center" }}>
                         <div style={{
-                            width: 52, height: 52,
+                            width: 52,
+                            height: 52,
                             background: "rgba(61,44,0,0.1)",
                             borderRadius: "3px",
-                            display: "flex", alignItems: "center", justifyContent: "center",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                             margin: "0 auto 1rem",
-                            transform: "rotate(-2deg)"
+                            transform: "rotate(-2deg)",
                         }}>
                             <UserPlus size={26} color="#3d2c00" />
                         </div>
 
-                        <h2>Invite Collaborators ✉️</h2>
+                        <h2>Invite Collaborators</h2>
                         <p style={{ marginBottom: 0 }}>
                             Anyone with this code can view and edit notes.
                         </p>
@@ -390,17 +561,41 @@ const NotesPage = () => {
                             </button>
                         </div>
 
-                        <button
-                            className="sharp-btn primary"
-                            onClick={() => setShowInviteModal(false)}
-                        >
-                            Done →
+                        <button className="sharp-btn primary" onClick={() => setShowInviteModal(false)}>
+                            Done
                         </button>
                     </div>
                 </div>
             )}
 
-            {/* ── Canvas ───────────────────────────────────────────── */}
+            {pendingConnectionNoteId && (
+                <div className="connection-hint">
+                    <span>Select another note&apos;s link button to connect it.</span>
+                    <button type="button" onClick={cancelPendingConnection} title="Cancel connection">
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
+
+            {pendingUnlinkNoteId && (
+                <div className="connection-hint unlink-hint">
+                    <span>Select a connected note to remove only that link.</span>
+                    <div className="connection-hint-actions">
+                        <button
+                            type="button"
+                            className="connection-hint-secondary"
+                            onClick={() => deleteConnectionsForNote(pendingUnlinkNoteId)}
+                            title="Remove every connection from this note"
+                        >
+                            Unlink All
+                        </button>
+                        <button type="button" onClick={cancelPendingUnlink} title="Cancel unlink">
+                            <X size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div
                 className="canvas"
                 style={{
@@ -414,12 +609,12 @@ const NotesPage = () => {
                     overflow: "visible",
                 }}
             >
+                {connections.length > 0 && <ConnectionLayer />}
                 {notes.map(note => (
                     <NoteCard key={note.cid || note.$id} note={note} />
                 ))}
             </div>
 
-            {/* ── Controls (color picker + add btn) ────────────────── */}
             <Controls />
         </div>
     );

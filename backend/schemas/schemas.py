@@ -33,6 +33,20 @@ class NotebookResponse(NotebookBase):
 class NotebookJoin(BaseModel):
     invite_code: str
 
+class ConnectionBase(BaseModel):
+    notebook_id: int
+    source_note_id: int
+    target_note_id: int
+
+class ConnectionCreate(ConnectionBase):
+    pass
+
+class ConnectionResponse(ConnectionBase):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
 # Note Schemas
 class NoteBase(BaseModel):
     body: str = ""

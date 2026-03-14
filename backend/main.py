@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
 from typing import List
 import uvicorn
 import os
@@ -10,11 +11,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database.db import engine, get_db, Base
-from models.models import User, Note, Notebook
+from models.models import User, Note, Notebook, Connection
 from schemas.schemas import (
     UserCreate, UserResponse, 
     NoteCreate, NoteUpdate, NoteResponse, 
     NotebookCreate, NotebookResponse, NotebookJoin,
+    ConnectionCreate, ConnectionResponse,
     Token
 )
 
@@ -133,7 +135,11 @@ def leave_notebook(notebook_id: int, current_user: User = Depends(get_current_us
 def delete_notebook(notebook_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     db_notebook = (
         db.query(Notebook)
-        .options(joinedload(Notebook.members), joinedload(Notebook.notes))
+        .options(
+            joinedload(Notebook.members),
+            joinedload(Notebook.notes),
+            joinedload(Notebook.connections),
+        )
         .filter(Notebook.id == notebook_id)
         .first()
     )
@@ -150,6 +156,82 @@ def delete_notebook(notebook_id: int, current_user: User = Depends(get_current_u
     db.delete(db_notebook)
     db.commit()
     return {"message": "Notebook deleted"}
+
+@app.get("/notebooks/{notebook_id}/connections", response_model=List[ConnectionResponse])
+def get_connections_for_notebook(notebook_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    is_owner = db.query(Notebook).filter(Notebook.id == notebook_id, Notebook.owner_id == current_user.id).first()
+    is_member = db.query(Notebook).join(Notebook.members).filter(Notebook.id == notebook_id, User.id == current_user.id).first()
+
+    if not is_owner and not is_member:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return db.query(Connection).filter(Connection.notebook_id == notebook_id).all()
+
+@app.post("/connections", response_model=ConnectionResponse)
+def create_connection(connection: ConnectionCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    is_owner = db.query(Notebook).filter(
+        Notebook.id == connection.notebook_id,
+        Notebook.owner_id == current_user.id,
+    ).first()
+    is_member = db.query(Notebook).join(Notebook.members).filter(
+        Notebook.id == connection.notebook_id,
+        User.id == current_user.id,
+    ).first()
+
+    if not is_owner and not is_member:
+        raise HTTPException(status_code=403, detail="Access denied to this notebook")
+
+    if connection.source_note_id == connection.target_note_id:
+        raise HTTPException(status_code=400, detail="A note cannot connect to itself")
+
+    source_id, target_id = sorted([connection.source_note_id, connection.target_note_id])
+
+    notes = db.query(Note).filter(
+        Note.notebook_id == connection.notebook_id,
+        Note.id.in_([source_id, target_id]),
+    ).all()
+    if len(notes) != 2:
+        raise HTTPException(status_code=404, detail="One or more notes were not found in this notebook")
+
+    existing = db.query(Connection).filter(
+        Connection.notebook_id == connection.notebook_id,
+        Connection.source_note_id == source_id,
+        Connection.target_note_id == target_id,
+    ).first()
+    if existing:
+        return existing
+
+    db_connection = Connection(
+        notebook_id=connection.notebook_id,
+        source_note_id=source_id,
+        target_note_id=target_id,
+    )
+    db.add(db_connection)
+    db.commit()
+    db.refresh(db_connection)
+    return db_connection
+
+@app.delete("/connections/{connection_id}")
+def delete_connection(connection_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_connection = db.query(Connection).filter(Connection.id == connection_id).first()
+    if not db_connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    is_owner = db.query(Notebook).filter(
+        Notebook.id == db_connection.notebook_id,
+        Notebook.owner_id == current_user.id,
+    ).first()
+    is_member = db.query(Notebook).join(Notebook.members).filter(
+        Notebook.id == db_connection.notebook_id,
+        User.id == current_user.id,
+    ).first()
+
+    if not is_owner and not is_member:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    db.delete(db_connection)
+    db.commit()
+    return {"message": "Connection deleted"}
 
 # Note Routes
 @app.get("/notebooks/{notebook_id}/notes", response_model=List[NoteResponse])
@@ -214,7 +296,14 @@ def delete_note(note_id: int, current_user: User = Depends(get_current_user), db
     
     if not is_note_owner and not is_notebook_owner:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
+    db.query(Connection).filter(
+        or_(
+            Connection.source_note_id == note_id,
+            Connection.target_note_id == note_id,
+        )
+    ).delete(synchronize_session=False)
+
     db.delete(db_note)
     db.commit()
     return {"message": "Note deleted"}

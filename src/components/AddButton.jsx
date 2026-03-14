@@ -3,13 +3,18 @@ import colors from "../assets/colors.json";
 import { useContext } from "react";
 import { db } from "../utils/db";
 import { NoteContext } from "../context/NotesContext";
+import { useDialog } from "../context/DialogContext";
 
 const AddButton = () => {
     const { setNotes, currentNotebookId, canvasOffset, zoom } = useContext(NoteContext);
+    const { showAlert } = useDialog();
  
     const addNote = async () => {
         if (!currentNotebookId) {
-            alert("No notebook selected");
+            await showAlert({
+                title: "No notebook selected",
+                message: "Open a notebook first, then add your note to the canvas.",
+            });
             return;
         }
 

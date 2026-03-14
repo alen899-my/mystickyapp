@@ -1,13 +1,14 @@
+/* eslint-disable react/prop-types */
 import { useEffect, useRef, useState, useContext } from "react";
 import { db } from "../utils/db";
 import { autoGrow, setZIndex, bodyParser, getContrastColor } from "../utils/utils";
-import { Loader2, Trash2 } from "lucide-react";
+import { Link2, Loader2, Trash2, Unlink2 } from "lucide-react";
 import { NoteContext } from "../context/NotesContext";
 
 const NoteCard = ({ note }) => {
-    const cardRef          = useRef(null);
-    const textAreaRef      = useRef(null);
-    const keyUpTimer       = useRef(null);
+    const cardRef = useRef(null);
+    const textAreaRef = useRef(null);
+    const keyUpTimer = useRef(null);
     const getStableRotation = (id) => {
         const source = String(id || "note");
         let hash = 0;
@@ -18,50 +19,76 @@ const NoteCard = ({ note }) => {
 
         return hash - 2;
     };
-    const getNotePosition = (p) => {
-        if (!p) return { x: 0, y: 0 };
-        return typeof p === "string" ? JSON.parse(p) : p;
+    const getNotePosition = (position) => {
+        if (!position) return { x: 0, y: 0 };
+        return typeof position === "string" ? JSON.parse(position) : position;
     };
 
-    const getNoteColors = (c) => {
-        if (!c) return { colorHeader: "#000", colorBody: "#fff", colorText: "#000" };
-        return typeof c === "string" ? JSON.parse(c) : c;
+    const getNoteColors = (colors) => {
+        if (!colors) return { colorHeader: "#000", colorBody: "#fff", colorText: "#000" };
+        return typeof colors === "string" ? JSON.parse(colors) : colors;
     };
 
-    const posRef           = useRef(getNotePosition(note.position));
+    const posRef = useRef(getNotePosition(note.position));
     const isInteractingRef = useRef(false);
-    // Track whether a body save is in-flight so onBlur knows to stay locked
-    const bodySavingRef    = useRef(false);
+    const bodySavingRef = useRef(false);
 
-    const { setNotes, setSelectedNote, zoomRef } = useContext(NoteContext);
+    const {
+        setNotes,
+        setConnections,
+        setSelectedNote,
+        zoomRef,
+        connections,
+        pendingConnectionNoteId,
+        beginOrCompleteConnection,
+        pendingUnlinkNoteId,
+        beginOrCompleteUnlink,
+        deleteConnectionById,
+        updateNoteSize,
+        removeNoteSize,
+        updateNotePosition,
+        removeNotePosition,
+        getNoteKey,
+    } = useContext(NoteContext);
 
-    const [saving,   setSaving]   = useState(false);
+    const [saving, setSaving] = useState(false);
     const [position, setPosition] = useState(() => getNotePosition(note.position));
-    const [body,     setBody]     = useState(() => bodyParser(note.body));
-    const [rotation]              = useState(() => getStableRotation(note.cid || note.$id));
+    const [body, setBody] = useState(() => bodyParser(note.body));
+    const [rotation] = useState(() => getStableRotation(note.cid || note.$id));
 
-    const colors      = getNoteColors(note.colors);
+    const colors = getNoteColors(note.colors);
     const headerColor = colors.colorHeader;
-    const bodyColor   = colors.colorBody;
-    const textColor   = colors.colorText;
-    const contrast    = getContrastColor(headerColor);
+    const bodyColor = colors.colorBody;
+    const textColor = colors.colorText;
+    const contrast = getContrastColor(headerColor);
+    const noteDomId = String(note.$id);
+    const noteKey = getNoteKey(note);
+    const isTempNote = noteDomId.startsWith("temp-");
+    const isPendingConnectionStart = pendingConnectionNoteId === noteDomId;
+    const isPendingUnlinkStart = pendingUnlinkNoteId === noteDomId;
+    const matchesCurrentNote = (candidate) => getNoteKey(candidate) === noteKey;
+    const noteConnections = connections.filter(connection =>
+        String(connection.source_note_id) === noteDomId ||
+        String(connection.target_note_id) === noteDomId
+    );
+    const hasConnections = noteConnections.length > 0;
 
-    // ── Server sync — only apply when not interacting ──────────────
     useEffect(() => {
         if (isInteractingRef.current) return;
-        const p = getNotePosition(note.position);
-        if (p && (p.x !== posRef.current.x || p.y !== posRef.current.y)) {
-            posRef.current = { x: p.x, y: p.y };
-            setPosition(posRef.current);
+
+        const nextPosition = getNotePosition(note.position);
+        if (nextPosition.x !== posRef.current.x || nextPosition.y !== posRef.current.y) {
+            posRef.current = nextPosition;
+            setPosition(nextPosition);
         }
     }, [note.position]);
 
     useEffect(() => {
         if (isInteractingRef.current) return;
-        const noteBody = note.body || "";
-        const newBody = bodyParser(noteBody);
-        if (newBody !== body) {
-            setBody(newBody);
+
+        const nextBody = bodyParser(note.body || "");
+        if (nextBody !== body) {
+            setBody(nextBody);
         }
     }, [note.body, body]);
 
@@ -70,23 +97,46 @@ const NoteCard = ({ note }) => {
         setZIndex(cardRef.current);
     }, []);
 
-    // ── Unmount cleanup ─────────────────────────────────────────────
+    useEffect(() => {
+        if (!cardRef.current || typeof ResizeObserver === "undefined") return undefined;
+
+        const updateSize = () => {
+            if (!cardRef.current) return;
+
+            updateNoteSize(noteDomId, {
+                width: cardRef.current.offsetWidth,
+                height: cardRef.current.offsetHeight,
+            });
+        };
+
+        updateSize();
+
+        const resizeObserver = new ResizeObserver(updateSize);
+        resizeObserver.observe(cardRef.current);
+
+        return () => {
+            resizeObserver.disconnect();
+            removeNoteSize(noteDomId);
+        };
+    }, [noteDomId, removeNoteSize, updateNoteSize]);
+
+    useEffect(() => {
+        updateNotePosition(noteDomId, position);
+    }, [noteDomId, position, updateNotePosition]);
+
     useEffect(() => {
         return () => {
             clearTimeout(keyUpTimer.current);
+            removeNotePosition(noteDomId);
         };
-    }, []);
+    }, [noteDomId, removeNotePosition]);
 
     const noteIdRef = useRef(note.$id);
     useEffect(() => { noteIdRef.current = note.$id; }, [note.$id]);
 
-    // ── Helpers ─────────────────────────────────────────────────────
-
-    // ── Save ────────────────────────────────────────────────────────
     const saveData = async (key, value, retryCount = 0) => {
         const currentId = noteIdRef.current;
-        
-        // If still optimistic, wait for real ID from server to arrive
+
         if (typeof currentId === "string" && currentId.startsWith("temp-")) {
             if (retryCount < 20) {
                 setTimeout(() => saveData(key, value, retryCount + 1), 500);
@@ -99,20 +149,22 @@ const NoteCard = ({ note }) => {
         setSaving(true);
         try {
             await db.notes.update(currentId, { [key]: JSON.stringify(value) });
-        } catch (err) {
-            console.error("Save failed:", err);
+        } catch (error) {
+            console.error("Save failed:", error);
         }
         setSaving(false);
     };
 
-    // ── Delete ──────────────────────────────────────────────────────
-    const handleDelete = (e) => {
-        e.stopPropagation();
+    const handleDelete = (event) => {
+        event.stopPropagation();
         db.notes.delete(note.$id);
-        setNotes(prev => prev.filter(n => n.$id !== note.$id));
+        setNotes(prev => prev.filter(candidate => !matchesCurrentNote(candidate)));
+        setConnections(prev => prev.filter(connection =>
+            String(connection.source_note_id) !== noteDomId &&
+            String(connection.target_note_id) !== noteDomId
+        ));
     };
 
-    // ── Keyboard save ───────────────────────────────────────────────
     const handleKeyUp = () => {
         clearTimeout(keyUpTimer.current);
         keyUpTimer.current = null;
@@ -120,15 +172,14 @@ const NoteCard = ({ note }) => {
 
         keyUpTimer.current = setTimeout(async () => {
             bodySavingRef.current = true;
-            
+
             const currentBody = textAreaRef.current ? textAreaRef.current.value : body;
 
-            // Protect local change in central state immediately against polls
-            setNotes(prev => prev.map(n => n.cid === note.cid ? {
-                ...n,
+            setNotes(prev => prev.map(candidate => matchesCurrentNote(candidate) ? {
+                ...candidate,
                 body: currentBody,
-                __localEdit: Date.now()
-            } : n));
+                __localEdit: Date.now(),
+            } : candidate));
 
             try {
                 if (textAreaRef.current) {
@@ -144,7 +195,6 @@ const NoteCard = ({ note }) => {
         }, 1500);
     };
 
-    // ── Generic drag engine ─────────────────────────────────────────
     const startDrag = (initialScreenX, initialScreenY) => {
         isInteractingRef.current = true;
         setZIndex(cardRef.current);
@@ -154,32 +204,31 @@ const NoteCard = ({ note }) => {
         let lastY = initialScreenY;
 
         const move = (screenX, screenY) => {
-            const dxScreen = screenX - lastX;
-            const dyScreen = screenY - lastY;
+            const deltaX = screenX - lastX;
+            const deltaY = screenY - lastY;
             lastX = screenX;
             lastY = screenY;
 
-            const z = zoomRef?.current || 1;
-            const newPos = {
-                x: posRef.current.x + dxScreen / z,
-                y: posRef.current.y + dyScreen / z,
+            const currentZoom = zoomRef?.current || 1;
+            const newPosition = {
+                x: posRef.current.x + deltaX / currentZoom,
+                y: posRef.current.y + deltaY / currentZoom,
             };
-            posRef.current = newPos;
-            setPosition(newPos);
+            posRef.current = newPosition;
+            setPosition(newPosition);
         };
 
         const end = async () => {
-            const finalPos = { ...posRef.current };
+            const finalPosition = { ...posRef.current };
 
-            // Protect local change in central state immediately against polls
-            setNotes(prev => prev.map(n => n.cid === note.cid ? {
-                ...n,
-                position: JSON.stringify(finalPos),
-                __localEdit: Date.now()
-            } : n));
+            setNotes(prev => prev.map(candidate => matchesCurrentNote(candidate) ? {
+                ...candidate,
+                position: JSON.stringify(finalPosition),
+                __localEdit: Date.now(),
+            } : candidate));
 
             try {
-                await saveData("position", finalPos);
+                await saveData("position", finalPosition);
             } finally {
                 isInteractingRef.current = false;
             }
@@ -188,60 +237,57 @@ const NoteCard = ({ note }) => {
         return { move, end };
     };
 
-    // ── Mouse drag ──────────────────────────────────────────────────
-    const mouseDown = (e) => {
-        if (e.target.className !== "card-header") return;
-        e.preventDefault();
+    const mouseDown = (event) => {
+        if (!event.target.classList.contains("card-header")) return;
+        event.preventDefault();
 
-        const { move, end } = startDrag(e.clientX, e.clientY);
+        const { move, end } = startDrag(event.clientX, event.clientY);
 
-        const onMove = (ev) => move(ev.clientX, ev.clientY);
-        const onUp   = () => {
+        const onMove = (moveEvent) => move(moveEvent.clientX, moveEvent.clientY);
+        const onUp = () => {
             document.removeEventListener("mousemove", onMove);
-            document.removeEventListener("mouseup",   onUp);
+            document.removeEventListener("mouseup", onUp);
             end();
         };
+
         document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup",   onUp);
+        document.addEventListener("mouseup", onUp);
     };
 
-    // ── Touch drag ──────────────────────────────────────────────────
-    const touchStart = (e) => {
-        if (e.target.className !== "card-header") return;
-        const t0 = e.touches[0];
+    const touchStart = (event) => {
+        if (!event.target.classList.contains("card-header")) return;
+        const touch = event.touches[0];
 
-        const { move, end } = startDrag(t0.clientX, t0.clientY);
+        const { move, end } = startDrag(touch.clientX, touch.clientY);
 
-        const onMove = (ev) => {
-            ev.preventDefault();
-            const t = ev.touches[0];
-            move(t.clientX, t.clientY);
+        const onMove = (moveEvent) => {
+            moveEvent.preventDefault();
+            const nextTouch = moveEvent.touches[0];
+            move(nextTouch.clientX, nextTouch.clientY);
         };
         const onEnd = () => {
             document.removeEventListener("touchmove", onMove);
-            document.removeEventListener("touchend",  onEnd);
+            document.removeEventListener("touchend", onEnd);
             end();
         };
+
         document.addEventListener("touchmove", onMove, { passive: false });
-        document.addEventListener("touchend",  onEnd);
+        document.addEventListener("touchend", onEnd);
     };
 
-    // ── Render ──────────────────────────────────────────────────────
     return (
         <div
             ref={cardRef}
-            className="card"
+            className={`card ${isPendingConnectionStart ? "pending-connection-start" : ""}`}
             style={{
                 left: `${position.x}px`,
-                top:  `${position.y}px`,
+                top: `${position.y}px`,
                 backgroundColor: bodyColor,
                 "--rotation": `${rotation}deg`,
             }}
         >
-            {/* Tape strip */}
             <div className="card-tape" style={{ background: `${headerColor}88` }} />
 
-            {/* Header / Drag Handle */}
             <div
                 className="card-header"
                 onMouseDown={mouseDown}
@@ -251,12 +297,52 @@ const NoteCard = ({ note }) => {
                 <div className="card-header-left">
                     <button
                         className="card-delete-btn"
-                        onMouseDown={e => e.stopPropagation()}
+                        onMouseDown={event => event.stopPropagation()}
                         onClick={handleDelete}
                         style={{ color: contrast }}
                         title="Delete"
                     >
                         <Trash2 size={13} strokeWidth={2.5} />
+                    </button>
+                    <button
+                        className={`card-connect-btn ${isPendingConnectionStart ? "active" : ""}`}
+                        onMouseDown={event => event.stopPropagation()}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            beginOrCompleteConnection(note);
+                        }}
+                        style={{ color: contrast }}
+                        title={isTempNote ? "Wait for this note to save before connecting" : "Connect note"}
+                        disabled={isTempNote}
+                    >
+                        <Link2 size={13} strokeWidth={2.4} />
+                    </button>
+                    <button
+                        className={`card-unlink-btn ${isPendingUnlinkStart ? "active" : ""}`}
+                        onMouseDown={event => event.stopPropagation()}
+                        onClick={async (event) => {
+                            event.stopPropagation();
+
+                            if (!hasConnections) return;
+
+                            if (!pendingUnlinkNoteId && noteConnections.length === 1) {
+                                await deleteConnectionById(noteConnections[0].id);
+                                return;
+                            }
+
+                            beginOrCompleteUnlink(note);
+                        }}
+                        style={{ color: contrast }}
+                        title={
+                            !hasConnections
+                                ? "This note has no connections"
+                                : noteConnections.length === 1 && !pendingUnlinkNoteId
+                                    ? "Remove this connection"
+                                    : "Choose a connected note to unlink, or use Unlink All from the hint"
+                        }
+                        disabled={!hasConnections}
+                    >
+                        <Unlink2 size={13} strokeWidth={2.4} />
                     </button>
                     {saving && (
                         <span className="card-saving" style={{ color: contrast }}>
@@ -280,12 +366,11 @@ const NoteCard = ({ note }) => {
                 )}
             </div>
 
-            {/* Body */}
             <div className="card-body">
                 <textarea
                     ref={textAreaRef}
                     value={body}
-                    onChange={e => setBody(e.target.value)}
+                    onChange={event => setBody(event.target.value)}
                     onKeyUp={handleKeyUp}
                     onFocus={() => {
                         isInteractingRef.current = true;
@@ -293,7 +378,6 @@ const NoteCard = ({ note }) => {
                         setSelectedNote(note);
                     }}
                     onBlur={() => {
-                        // If a body save is still in-flight or timer is pending, don't release.
                         if (keyUpTimer.current !== null || bodySavingRef.current) {
                             return;
                         }
@@ -305,7 +389,6 @@ const NoteCard = ({ note }) => {
                 />
             </div>
 
-            {/* Footer */}
             {note.created_at && (
                 <div className="card-footer" style={{ color: textColor }}>
                     {new Date(note.created_at).toLocaleDateString(undefined, {

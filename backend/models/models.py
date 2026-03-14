@@ -40,6 +40,7 @@ class Notebook(Base):
     members = relationship("User", secondary=notebook_members, back_populates="member_of")
     
     notes = relationship("Note", back_populates="notebook", cascade="all, delete-orphan")
+    connections = relationship("Connection", back_populates="notebook", cascade="all, delete-orphan")
 
 class Note(Base):
     __tablename__ = "notes"
@@ -53,3 +54,15 @@ class Note(Base):
 
     owner = relationship("User", back_populates="notes")
     notebook = relationship("Notebook", back_populates="notes")
+
+class Connection(Base):
+    __tablename__ = "connections"
+    id = Column(Integer, primary_key=True, index=True)
+    notebook_id = Column(Integer, ForeignKey("notebooks.id"))
+    source_note_id = Column(Integer, ForeignKey("notes.id"))
+    target_note_id = Column(Integer, ForeignKey("notes.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    notebook = relationship("Notebook", back_populates="connections")
+    source_note = relationship("Note", foreign_keys=[source_note_id])
+    target_note = relationship("Note", foreign_keys=[target_note_id])

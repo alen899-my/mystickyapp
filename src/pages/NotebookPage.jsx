@@ -4,6 +4,7 @@ import { NoteContext } from "../context/NotesContext";
 import { useNavigate } from "react-router-dom";
 import "../styles/NotebookDashboard.css";
 import { Home, Plus, Folder, Search, Book, BookText, LogOut, Users, StickyNote, Trash2 } from "lucide-react";
+import { useDialog } from "../context/DialogContext";
 
 const NotebookPage = () => {
     const [notebooks, setNotebooks] = useState([]);
@@ -16,6 +17,7 @@ const NotebookPage = () => {
     const [deletingNotebookId, setDeletingNotebookId] = useState(null);
 
     const { setCurrentNotebookId } = useContext(NoteContext);
+    const { showAlert, showConfirm } = useDialog();
     const navigate = useNavigate();
 
     const fetchNotebooks = async () => {
@@ -56,7 +58,10 @@ const NotebookPage = () => {
             setJoinCode("");
             setShowJoinModal(false);
         } else {
-            alert(result.detail || "Invalid code. Try again.");
+            await showAlert({
+                title: "Could not join notebook",
+                message: result.detail || "Invalid code. Try again.",
+            });
         }
     };
 
@@ -71,7 +76,13 @@ const NotebookPage = () => {
         const isOwner = notebook.owner_id === currentUser?.id;
         if (!isOwner || deletingNotebookId === notebook.id) return;
 
-        const confirmed = window.confirm(`Delete "${notebook.name}"? This cannot be undone.`);
+        const confirmed = await showConfirm({
+            title: "Delete notebook?",
+            message: `Delete "${notebook.name}"? This cannot be undone.`,
+            confirmText: "Delete notebook",
+            cancelText: "Keep it",
+            tone: "danger",
+        });
         if (!confirmed) return;
 
         setDeletingNotebookId(notebook.id);
@@ -81,7 +92,10 @@ const NotebookPage = () => {
             setNotebooks(prev => prev.filter(({ id }) => id !== notebook.id));
         } catch (err) {
             console.error("Delete notebook error:", err);
-            alert("Could not delete notebook. Please try again.");
+            await showAlert({
+                title: "Delete failed",
+                message: "Could not delete notebook. Please try again.",
+            });
         } finally {
             setDeletingNotebookId(null);
         }

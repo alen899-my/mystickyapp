@@ -1,17 +1,22 @@
-import React from "react";
+import PropTypes from "prop-types";
 import { useContext } from "react";
 import { NoteContext } from "../context/NotesContext";
 import { db } from "../utils/db";
+import { useDialog } from "../context/DialogContext";
 
 const Color = ({ color, onSelect }) => {
     // 1. Add 'notes' and 'setNotes' to the context destructuring
     const { selectedNote, notes, setNotes } = useContext(NoteContext);
+    const { showAlert } = useDialog();
 
     const changeColor = async () => {
         try {
             // 2. Ensure a note is actually selected
             if (!selectedNote) {
-                alert("Please select a note first.");
+                await showAlert({
+                    title: "Select a note first",
+                    message: "Pick the note you want to recolor, then choose a color.",
+                });
                 return;
             }
 
@@ -74,4 +79,11 @@ const Color = ({ color, onSelect }) => {
 };
 
 export default Color;
+
+Color.propTypes = {
+    color: PropTypes.shape({
+        colorHeader: PropTypes.string.isRequired,
+    }).isRequired,
+    onSelect: PropTypes.func,
+};
 
