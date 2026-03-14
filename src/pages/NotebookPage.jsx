@@ -3,7 +3,7 @@ import { db } from "../utils/db";
 import { NoteContext } from "../context/NotesContext";
 import { useNavigate } from "react-router-dom";
 import "../styles/NotebookDashboard.css";
-import { Home, Plus, Folder, Search, Book, BookText, LogOut, Users, StickyNote } from "lucide-react";
+import { Home, Plus, Folder, Search, Book, BookText, LogOut, Users, StickyNote, Trash2 } from "lucide-react";
 
 const NotebookPage = () => {
     const [notebooks, setNotebooks] = useState([]);
@@ -13,6 +13,7 @@ const NotebookPage = () => {
     const [joinCode, setJoinCode] = useState("");
     const [currentUser, setCurrentUser] = useState(null);
     const [showUserDropdown, setShowUserDropdown] = useState(false);
+    const [deletingNotebookId, setDeletingNotebookId] = useState(null);
 
     const { setCurrentNotebookId } = useContext(NoteContext);
     const navigate = useNavigate();
@@ -62,6 +63,28 @@ const NotebookPage = () => {
     const handleSelectNotebook = (id) => {
         setCurrentNotebookId(id);
         navigate(`/notebook/${id}`);
+    };
+
+    const handleDeleteNotebook = async (event, notebook) => {
+        event.stopPropagation();
+
+        const isOwner = notebook.owner_id === currentUser?.id;
+        if (!isOwner || deletingNotebookId === notebook.id) return;
+
+        const confirmed = window.confirm(`Delete "${notebook.name}"? This cannot be undone.`);
+        if (!confirmed) return;
+
+        setDeletingNotebookId(notebook.id);
+
+        try {
+            await db.notebooks.delete(notebook.id);
+            setNotebooks(prev => prev.filter(({ id }) => id !== notebook.id));
+        } catch (err) {
+            console.error("Delete notebook error:", err);
+            alert("Could not delete notebook. Please try again.");
+        } finally {
+            setDeletingNotebookId(null);
+        }
     };
 
     const handleLogout = () => {
@@ -193,12 +216,13 @@ const NotebookPage = () => {
                                             <th className="table-extra-col">Created</th>
                                             <th className="table-extra-col">Owner</th>
                                             <th>Role</th>
+                                            <th className="table-actions-col">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {notebooks.length === 0 ? (
                                             <tr>
-                                                <td colSpan="4">
+                                                <td colSpan="5">
                                                     <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
                                                         <BookText
                                                             size={40}
@@ -285,6 +309,19 @@ const NotebookPage = () => {
                                                         <span className={`status-badge ${isOwner ? "owner" : "member"}`}>
                                                             {isOwner ? "Owner" : "Member"}
                                                         </span>
+                                                    </td>
+                                                    <td className="table-actions-col">
+                                                        <button
+                                                            type="button"
+                                                            className={`notebook-delete-btn ${!isOwner ? "disabled" : ""}`}
+                                                            onClick={(event) => handleDeleteNotebook(event, nb)}
+                                                            disabled={!isOwner || deletingNotebookId === nb.id}
+                                                            title={isOwner ? "Delete notebook" : "Only owners can delete notebooks"}
+                                                            aria-label={`Delete ${nb.name}`}
+                                                        >
+                                                            <Trash2 size={14} />
+                                                            {deletingNotebookId === nb.id ? "Deleting..." : "Delete"}
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             );

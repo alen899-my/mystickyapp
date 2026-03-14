@@ -131,9 +131,22 @@ def leave_notebook(notebook_id: int, current_user: User = Depends(get_current_us
 
 @app.delete("/notebooks/{notebook_id}")
 def delete_notebook(notebook_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    db_notebook = db.query(Notebook).filter(Notebook.id == notebook_id, Notebook.owner_id == current_user.id).first()
+    db_notebook = (
+        db.query(Notebook)
+        .options(joinedload(Notebook.members), joinedload(Notebook.notes))
+        .filter(Notebook.id == notebook_id)
+        .first()
+    )
+
     if not db_notebook:
-        raise HTTPException(status_code=404, detail="Notebook not found or you are not the owner")
+        raise HTTPException(status_code=404, detail="Notebook not found")
+
+    if db_notebook.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the owner can delete this notebook")
+
+    # Clear membership links before removing the notebook so join-table rows are cleaned
+    # up consistently across database backends.
+    db_notebook.members.clear()
     db.delete(db_notebook)
     db.commit()
     return {"message": "Notebook deleted"}

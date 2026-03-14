@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import colors from "../assets/colors.json";
 import { useContext } from "react";
+import { db } from "../utils/db";
 import { NoteContext } from "../context/NotesContext";
 
 const AddButton = () => {

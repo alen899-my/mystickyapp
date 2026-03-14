@@ -534,6 +534,40 @@
     white-space: nowrap;
 }
 
+.table-actions-col {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.notebook-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-width: 92px;
+    padding: 0.42rem 0.7rem;
+    border-radius: 3px;
+    border: 1px solid rgba(155, 16, 16, 0.28);
+    background: rgba(155, 16, 16, 0.1);
+    color: #ffb5b5;
+    font-family: 'Caveat', cursive;
+    font-size: 0.9rem;
+    font-weight: 700;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.notebook-delete-btn:hover:not(:disabled) {
+    background: rgba(155, 16, 16, 0.18);
+    border-color: rgba(255, 150, 150, 0.4);
+    color: #ffd7d7;
+}
+
+.notebook-delete-btn:disabled,
+.notebook-delete-btn.disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
 /* ── Badges ──────────────────────────── */
 .status-badge {
     display: inline-flex;
@@ -797,6 +831,10 @@
     .action-card-text p { display: none; }
     .action-card-text h3 { font-size: 1rem; }
     .dash-dropdown { right: 0; left: auto; min-width: 190px; }
+    .notebook-delete-btn {
+        min-width: 0;
+        padding: 0.38rem 0.55rem;
+    }
 }
 
 @media (max-width: 360px) {
