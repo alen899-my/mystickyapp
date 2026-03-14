@@ -8,7 +8,7 @@ import { NoteContext } from "../context/NotesContext";
 const NoteCard = ({ note }) => {
     const cardRef = useRef(null);
     const textAreaRef = useRef(null);
-    const keyUpTimer = useRef(null);
+    const bodySaveTimerRef = useRef(null);
     const getStableRotation = (id) => {
         const source = String(id || "note");
         let hash = 0;
@@ -126,7 +126,7 @@ const NoteCard = ({ note }) => {
 
     useEffect(() => {
         return () => {
-            clearTimeout(keyUpTimer.current);
+            clearTimeout(bodySaveTimerRef.current);
             removeNotePosition(noteDomId);
         };
     }, [noteDomId, removeNotePosition]);
@@ -165,45 +165,39 @@ const NoteCard = ({ note }) => {
         ));
     };
 
-    const handleKeyUp = () => {
-        clearTimeout(keyUpTimer.current);
-        keyUpTimer.current = null;
-        isInteractingRef.current = true;
+    const persistBody = async (nextBody) => {
+        clearTimeout(bodySaveTimerRef.current);
+        bodySaveTimerRef.current = null;
+        bodySavingRef.current = true;
 
-        keyUpTimer.current = setTimeout(async () => {
-            bodySavingRef.current = true;
-
-            const currentBody = textAreaRef.current ? textAreaRef.current.value : body;
-
-            setNotes(prev => prev.map(candidate => matchesCurrentNote(candidate) ? {
-                ...candidate,
-                body: currentBody,
-                __localEdit: Date.now(),
-            } : candidate));
-
-            try {
-                if (textAreaRef.current) {
-                    await saveData("body", textAreaRef.current.value);
-                }
-            } finally {
-                keyUpTimer.current = null;
-                bodySavingRef.current = false;
-                if (document.activeElement !== textAreaRef.current) {
-                    isInteractingRef.current = false;
-                }
+        try {
+            await saveData("body", nextBody);
+        } finally {
+            bodySavingRef.current = false;
+            if (document.activeElement !== textAreaRef.current) {
+                isInteractingRef.current = false;
             }
+        }
+    };
+
+    const scheduleBodySave = (nextBody) => {
+        clearTimeout(bodySaveTimerRef.current);
+        bodySaveTimerRef.current = setTimeout(() => {
+            persistBody(nextBody);
         }, 1500);
     };
 
     const handleBodyChange = (event) => {
         const nextBody = event.target.value;
 
+        isInteractingRef.current = true;
         setBody(nextBody);
         setNotes(prev => prev.map(candidate => matchesCurrentNote(candidate) ? {
             ...candidate,
             body: nextBody,
             __localEdit: Date.now(),
         } : candidate));
+        scheduleBodySave(nextBody);
     };
 
     const startDrag = (initialScreenX, initialScreenY) => {
@@ -382,14 +376,18 @@ const NoteCard = ({ note }) => {
                     ref={textAreaRef}
                     value={body}
                     onChange={handleBodyChange}
-                    onKeyUp={handleKeyUp}
                     onFocus={() => {
                         isInteractingRef.current = true;
                         setZIndex(cardRef.current);
                         setSelectedNote(note);
                     }}
                     onBlur={() => {
-                        if (keyUpTimer.current !== null || bodySavingRef.current) {
+                        if (bodySaveTimerRef.current !== null) {
+                            persistBody(textAreaRef.current ? textAreaRef.current.value : body);
+                            return;
+                        }
+
+                        if (bodySavingRef.current) {
                             return;
                         }
                         isInteractingRef.current = false;

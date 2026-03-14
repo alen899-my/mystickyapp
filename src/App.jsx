@@ -5,6 +5,7 @@ import NotesPage from "./pages/NotePage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import NotebookPage from "./pages/NotebookPage";
+import NotFoundPage from "./pages/NotFoundPage";
 import NotesProvider from "./context/NotesContext";
 import { DialogProvider } from "./context/DialogContext";
 import Spinner from "./icons/Spinner";
@@ -154,6 +155,15 @@ function App() {
                                     <NotesPage />
                                 </PrivateRoute>
                             } 
+                        />
+
+                        <Route
+                            path="*"
+                            element={
+                                <PrivateRoute>
+                                    <NotFoundPage />
+                                </PrivateRoute>
+                            }
                         />
                     </Routes>
                 </NotesProvider>

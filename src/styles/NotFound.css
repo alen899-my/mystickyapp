@@ -1,0 +1,223 @@
+.not-found-page {
+    position: relative;
+    min-height: 100vh;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.25rem;
+    background:
+        radial-gradient(circle at 20% 18%, rgba(255, 235, 161, 0.14), transparent 34%),
+        radial-gradient(circle at 82% 78%, rgba(255, 207, 117, 0.12), transparent 30%),
+        linear-gradient(180deg, #2d2010 0%, #1c1308 100%);
+}
+
+.not-found-float {
+    position: absolute;
+    width: 180px;
+    aspect-ratio: 1;
+    border-radius: 4px;
+    opacity: 0.14;
+    background: linear-gradient(180deg, rgba(255, 235, 161, 0.82), rgba(244, 196, 96, 0.8));
+    box-shadow: 0 24px 50px rgba(0, 0, 0, 0.2);
+}
+
+.not-found-float-left {
+    top: 8%;
+    left: 6%;
+    transform: rotate(-12deg);
+}
+
+.not-found-float-right {
+    right: 7%;
+    bottom: 10%;
+    transform: rotate(14deg);
+}
+
+.not-found-card {
+    position: relative;
+    width: min(100%, 560px);
+    padding: 2.6rem 2rem 2rem;
+    border-radius: 4px;
+    background:
+        linear-gradient(rgba(255, 235, 161, 0.48) 0px, rgba(255, 235, 161, 0.48) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 184, 184, 0.26) 0px, rgba(255, 184, 184, 0.26) 1px, transparent 1px),
+        linear-gradient(180deg, #fff8cf 0%, #f6df84 100%);
+    background-size: 100% 34px, 44px 100%, 100% 100%;
+    background-position: 0 84px, 40px 0, 0 0;
+    color: #3d2c00;
+    box-shadow:
+        0 2px 0 rgba(255, 255, 255, 0.5) inset,
+        0 14px 36px rgba(0, 0, 0, 0.26),
+        0 34px 80px rgba(0, 0, 0, 0.28);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 28px) 100%, 0 100%);
+    transform: rotate(-1.4deg);
+    animation: notFoundNoteDrop 0.42s cubic-bezier(0.175, 0.885, 0.32, 1.2);
+}
+
+.not-found-card::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(225deg, #b89f4b 44%, transparent 45%);
+}
+
+.not-found-tape {
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    width: 88px;
+    height: 22px;
+    border-radius: 3px;
+    background: rgba(255, 255, 220, 0.56);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+    transform: translateX(-50%) rotate(2deg);
+}
+
+.not-found-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+    background: rgba(61, 44, 0, 0.08);
+    color: rgba(61, 44, 0, 0.78);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.not-found-code {
+    margin-top: 1rem;
+    font-family: "Patrick Hand", cursive;
+    font-size: clamp(4rem, 12vw, 6.5rem);
+    line-height: 0.95;
+    color: #8f6310;
+    text-shadow: 2px 2px 0 rgba(255, 255, 255, 0.35);
+}
+
+.not-found-card h1 {
+    margin-top: 0.65rem;
+    font-family: "Caveat", cursive;
+    font-size: clamp(2rem, 5vw, 2.8rem);
+    line-height: 1.02;
+}
+
+.not-found-card p {
+    margin-top: 0.8rem;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: rgba(61, 44, 0, 0.82);
+}
+
+.not-found-sketch {
+    margin-top: 1.3rem;
+    padding: 1rem 1rem 0.95rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.28);
+    border: 1px dashed rgba(61, 44, 0, 0.18);
+}
+
+.not-found-sketch-line {
+    height: 2px;
+    width: 100%;
+    border-radius: 999px;
+    background: rgba(61, 44, 0, 0.12);
+    margin-bottom: 0.6rem;
+}
+
+.not-found-sketch-line.short {
+    width: 58%;
+}
+
+.not-found-sketch-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.2rem;
+    font-size: 0.96rem;
+    color: rgba(61, 44, 0, 0.78);
+}
+
+.not-found-actions {
+    display: flex;
+    gap: 0.85rem;
+    margin-top: 1.5rem;
+}
+
+.not-found-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-width: 148px;
+    padding: 0.78rem 1rem;
+    border-radius: 999px;
+    font-weight: 700;
+    transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.not-found-btn:hover {
+    transform: translateY(-2px);
+}
+
+.not-found-btn-primary {
+    background: #3d2c00;
+    color: #ffeba1;
+    box-shadow: 0 12px 24px rgba(61, 44, 0, 0.18);
+}
+
+.not-found-btn-secondary {
+    background: rgba(255, 255, 255, 0.44);
+    color: #4e3800;
+    border: 1px solid rgba(61, 44, 0, 0.14);
+}
+
+@keyframes notFoundNoteDrop {
+    0% {
+        opacity: 0;
+        transform: rotate(-4deg) translateY(-20px) scale(0.94);
+    }
+
+    70% {
+        transform: rotate(-0.6deg) translateY(3px) scale(1.01);
+    }
+
+    100% {
+        opacity: 1;
+        transform: rotate(-1.4deg) translateY(0) scale(1);
+    }
+}
+
+@media (max-width: 640px) {
+    .not-found-page {
+        padding: 1rem;
+    }
+
+    .not-found-card {
+        padding: 2.2rem 1.15rem 1.4rem;
+        transform: rotate(0deg);
+    }
+
+    .not-found-actions {
+        flex-direction: column;
+    }
+
+    .not-found-btn {
+        width: 100%;
+    }
+
+    .not-found-float {
+        width: 120px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .not-found-card {
+        animation: none;
+    }
+}

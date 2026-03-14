@@ -9,6 +9,8 @@ import { LogOut, UserPlus, DoorOpen, Copy, Check, ArrowLeft, X } from "lucide-re
 import "../styles/NoteCanvas.css";
 import { useDialog } from "../context/DialogContext";
 import { bodyParser } from "../utils/utils";
+import NotFoundPage from "./NotFoundPage";
+import Spinner from "../icons/Spinner";
 
 const NotesPage = () => {
     const {
@@ -39,6 +41,7 @@ const NotesPage = () => {
     const [inviteCode, setInviteCode] = useState("");
     const [copied, setCopied] = useState(false);
     const [copiedFlow, setCopiedFlow] = useState(false);
+    const [notebookStatus, setNotebookStatus] = useState("checking");
 
     const { showAlert, showConfirm } = useDialog();
     const navigate = useNavigate();
@@ -53,7 +56,47 @@ const NotesPage = () => {
     const lastPinchMidRef = useRef(null);
 
     useEffect(() => {
-        if (id) setCurrentNotebookId(id);
+        let isMounted = true;
+        const notebookId = Number(id);
+
+        if (!id || !Number.isInteger(notebookId) || notebookId <= 0) {
+            setCurrentNotebookId(null);
+            setNotebookStatus("not-found");
+            return undefined;
+        }
+
+        setNotebookStatus("checking");
+
+        const resolveNotebook = async () => {
+            try {
+                const result = await db.notebooks.list();
+                if (!isMounted) return;
+
+                const accessibleNotebooks = Array.isArray(result) ? result : [];
+                const hasNotebookAccess = accessibleNotebooks.some(notebook => Number(notebook.id) === notebookId);
+
+                if (!hasNotebookAccess) {
+                    setCurrentNotebookId(null);
+                    setNotebookStatus("not-found");
+                    return;
+                }
+
+                setCurrentNotebookId(String(notebookId));
+                setNotebookStatus("ready");
+            } catch (error) {
+                console.error("Notebook resolve error:", error);
+                if (!isMounted) return;
+
+                setCurrentNotebookId(null);
+                setNotebookStatus("not-found");
+            }
+        };
+
+        resolveNotebook();
+
+        return () => {
+            isMounted = false;
+        };
     }, [id, setCurrentNotebookId]);
 
     useEffect(() => {
@@ -438,6 +481,21 @@ const NotesPage = () => {
             });
         }
     };
+
+    if (notebookStatus === "checking") {
+        return <Spinner size={110} message="Looking for that notebook..." fullScreen />;
+    }
+
+    if (notebookStatus === "not-found") {
+        return (
+            <NotFoundPage
+                title="Notebook not found"
+                message="That notebook link does not point to a board you can open anymore. It may have been deleted, moved, or shared with a different account."
+                primaryLabel="Back to Dashboard"
+                primaryTo="/"
+            />
+        );
+    }
 
     return (
         <div
