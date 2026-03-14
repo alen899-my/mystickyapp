@@ -8,6 +8,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { LogOut, UserPlus, DoorOpen, Copy, Check, ArrowLeft, X } from "lucide-react";
 import "../styles/NoteCanvas.css";
 import { useDialog } from "../context/DialogContext";
+import { bodyParser } from "../utils/utils";
 
 const NotesPage = () => {
     const {
@@ -411,7 +412,8 @@ const NotesPage = () => {
         }
 
         const combinedText = connectedNotes
-            .map(note => (note.body || "").trim())
+            .map(note => bodyParser(note.body || ""))
+            .map(noteBody => String(noteBody || "").trim())
             .filter(Boolean)
             .join("\n\n");
 

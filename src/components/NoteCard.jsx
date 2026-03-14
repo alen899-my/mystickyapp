@@ -195,6 +195,17 @@ const NoteCard = ({ note }) => {
         }, 1500);
     };
 
+    const handleBodyChange = (event) => {
+        const nextBody = event.target.value;
+
+        setBody(nextBody);
+        setNotes(prev => prev.map(candidate => matchesCurrentNote(candidate) ? {
+            ...candidate,
+            body: nextBody,
+            __localEdit: Date.now(),
+        } : candidate));
+    };
+
     const startDrag = (initialScreenX, initialScreenY) => {
         isInteractingRef.current = true;
         setZIndex(cardRef.current);
@@ -370,7 +381,7 @@ const NoteCard = ({ note }) => {
                 <textarea
                     ref={textAreaRef}
                     value={body}
-                    onChange={event => setBody(event.target.value)}
+                    onChange={handleBodyChange}
                     onKeyUp={handleKeyUp}
                     onFocus={() => {
                         isInteractingRef.current = true;
