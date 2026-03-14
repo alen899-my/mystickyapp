@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, useRef } from "react";
+import { useCallback, useContext, useEffect, useState, useRef } from "react";
 import { NoteContext } from "../context/NotesContext";
 import ConnectionLayer from "../components/ConnectionLayer";
 import NoteCard from "../components/NoteCard";
@@ -60,7 +60,12 @@ const NotesPage = () => {
     const websocketRef = useRef(null);
     const websocketReconnectTimerRef = useRef(null);
 
-    const applyZoomFromPoint = (clientX, clientY, zoomFactor) => {
+    const isInsideCanvas = useCallback((target) => {
+        const page = notesPageRef.current;
+        return Boolean(page && target instanceof Node && page.contains(target));
+    }, []);
+
+    const applyZoomFromPoint = useCallback((clientX, clientY, zoomFactor) => {
         setZoom(prevZoom => {
             const nextZoom = Math.min(Math.max(prevZoom * zoomFactor, 0.05), 5);
             setCanvasOffset(prevOffset => {
@@ -77,7 +82,7 @@ const NotesPage = () => {
             });
             return nextZoom;
         });
-    };
+    }, [setCanvasOffset, setZoom]);
 
     const mergeIncomingNote = (previousNotes, incomingNote) => {
         const normalizedNote = normalizeNote(incomingNote);
@@ -159,7 +164,7 @@ const NotesPage = () => {
         };
     }, [id, setCurrentNotebookId]);
 
-    const handleWheelZoom = (event) => {
+    const handleWheelZoom = useCallback((event) => {
         event.preventDefault();
 
         if (event.shiftKey && !event.ctrlKey && !event.metaKey) {
@@ -178,7 +183,39 @@ const NotesPage = () => {
         const zoomFactor = Math.pow(1.22, delta / intensity);
 
         applyZoomFromPoint(event.clientX, event.clientY, zoomFactor);
-    };
+    }, [applyZoomFromPoint, setCanvasOffset]);
+
+    useEffect(() => {
+        const nativeWheelZoom = (event) => {
+            if (!isInsideCanvas(event.target)) return;
+            handleWheelZoom(event);
+        };
+
+        const preventNativeGestureZoom = (event) => {
+            if (!isInsideCanvas(event.target)) return;
+            event.preventDefault();
+        };
+
+        const blockNativePinch = (event) => {
+            if (event.touches.length >= 2 && isInsideCanvas(event.target)) {
+                event.preventDefault();
+            }
+        };
+
+        document.addEventListener("wheel", nativeWheelZoom, { passive: false, capture: true });
+        document.addEventListener("touchmove", blockNativePinch, { passive: false, capture: true });
+        document.addEventListener("gesturestart", preventNativeGestureZoom, { passive: false, capture: true });
+        document.addEventListener("gesturechange", preventNativeGestureZoom, { passive: false, capture: true });
+        document.addEventListener("gestureend", preventNativeGestureZoom, { passive: false, capture: true });
+
+        return () => {
+            document.removeEventListener("wheel", nativeWheelZoom, { capture: true });
+            document.removeEventListener("touchmove", blockNativePinch, { capture: true });
+            document.removeEventListener("gesturestart", preventNativeGestureZoom, { capture: true });
+            document.removeEventListener("gesturechange", preventNativeGestureZoom, { capture: true });
+            document.removeEventListener("gestureend", preventNativeGestureZoom, { capture: true });
+        };
+    }, [handleWheelZoom, isInsideCanvas]);
 
     const handleMouseDown = (event) => {
         const onCanvas =
@@ -608,8 +645,6 @@ const NotesPage = () => {
         <div
             ref={notesPageRef}
             className="notes-page"
-            onWheel={handleWheelZoom}
-            onWheelCapture={handleWheelZoom}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
