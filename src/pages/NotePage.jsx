@@ -295,8 +295,6 @@ const NotesPage = () => {
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             style={{
-                width: "100vw",
-                height: "100vh",
                 cursor: isDragging ? "grabbing" : "grab",
                 overflow: "hidden",
             }}

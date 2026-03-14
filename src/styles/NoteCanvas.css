@@ -5,23 +5,21 @@
    ═══════════════════════════════════════ */
 
 .notes-page {
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100dvh;
+    min-height: 100svh;
     background-color: #fcfcfc;
     overflow: hidden;
     position: fixed;
-    top: 0;
-    left: 0;
+    inset: 0;
     touch-action: none;
+    overscroll-behavior: none;
 }
 
 /* Whiteboard line grid */
 .grid-background {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
     pointer-events: none;
     z-index: 0;
     background-image:
@@ -31,13 +29,14 @@
 }
 
 .canvas {
-    width: 50000px;
-    height: 50000px;
     position: absolute;
-    top: 0;
-    left: 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     transform-origin: 0 0;
     z-index: 1;
+    overflow: visible;
+    will-change: transform;
 }
 
 /* ═══════════════════════════════════════
@@ -56,18 +55,17 @@
         0 16px 36px rgba(0,0,0,0.28);
     transform: rotate(var(--rotation, 0deg));
     transition:
-        transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275),
-        box-shadow 0.25s ease;
+        box-shadow 0.2s ease,
+        filter 0.2s ease;
     border-radius: 2px;
     clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%);
-    animation: cardPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    animation: cardFadeIn 0.2s ease-out;
     overflow: visible;
 }
 
-@keyframes cardPopIn {
-    0%   { opacity: 0; transform: scale(0.5) rotate(calc(var(--rotation, 0deg) + 8deg)); }
-    70%  { opacity: 1; transform: scale(1.04) rotate(calc(var(--rotation, 0deg) - 1deg)); }
-    100% { opacity: 1; transform: scale(1) rotate(var(--rotation, 0deg)); }
+@keyframes cardFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 /* Folded corner */
@@ -84,7 +82,8 @@
 }
 
 .card:hover {
-    transform: translateY(-6px) rotate(var(--rotation, 0deg)) scale(1.02);
+    transform: rotate(var(--rotation, 0deg));
+    filter: brightness(1.01);
     box-shadow:
         0 1px 1px rgba(0,0,0,0.15),
         0 8px 20px rgba(0,0,0,0.22),
@@ -502,7 +501,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem 2rem;
+    padding: calc(0.75rem + env(safe-area-inset-top)) 2rem 0.75rem;
     background: rgba(10, 6, 2, 0.88);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid rgba(255, 235, 161, 0.09);
@@ -825,9 +824,15 @@
    ═══════════════════════════════════════ */
 @media (max-width: 768px) {
     #controls {
-        right: 16px;
-        padding: 1rem 0.75rem;
+        left: 50%;
+        right: auto;
+        top: auto;
+        bottom: calc(16px + env(safe-area-inset-bottom));
+        transform: translateX(-50%);
+        flex-direction: row;
+        padding: 0.85rem 0.9rem;
         gap: 0.9rem;
+        max-width: calc(100vw - 24px);
     }
 
     .color, #color-plus-btn { width: 30px; height: 30px; }
@@ -844,9 +849,28 @@
 }
 
 @media (max-width: 480px) {
-    #controls { right: 12px; padding: 0.75rem 0.6rem; }
+    #controls {
+        bottom: calc(12px + env(safe-area-inset-bottom));
+        padding: 0.75rem 0.6rem;
+        gap: 0.75rem;
+    }
     .card { width: 210px; }
     .card-body textarea { font-size: 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card,
+    .back-btn,
+    .mini-avatar,
+    #add-btn,
+    .color,
+    #color-plus-btn,
+    .profile-dropdown.dash-dropdown,
+    .sharp-modal,
+    .color-modal-content {
+        animation: none;
+        transition: none;
+    }
 }
 
 @media (min-width: 1440px) {

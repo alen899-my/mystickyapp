@@ -8,6 +8,16 @@ const NoteCard = ({ note }) => {
     const cardRef          = useRef(null);
     const textAreaRef      = useRef(null);
     const keyUpTimer       = useRef(null);
+    const getStableRotation = (id) => {
+        const source = String(id || "note");
+        let hash = 0;
+
+        for (let index = 0; index < source.length; index += 1) {
+            hash = (hash * 31 + source.charCodeAt(index)) % 5;
+        }
+
+        return hash - 2;
+    };
     const getNotePosition = (p) => {
         if (!p) return { x: 0, y: 0 };
         return typeof p === "string" ? JSON.parse(p) : p;
@@ -28,7 +38,7 @@ const NoteCard = ({ note }) => {
     const [saving,   setSaving]   = useState(false);
     const [position, setPosition] = useState(() => getNotePosition(note.position));
     const [body,     setBody]     = useState(() => bodyParser(note.body));
-    const [rotation]              = useState(() => Math.round(Math.random() * 4) - 2);
+    const [rotation]              = useState(() => getStableRotation(note.cid || note.$id));
 
     const colors      = getNoteColors(note.colors);
     const headerColor = colors.colorHeader;

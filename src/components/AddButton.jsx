@@ -15,9 +15,12 @@ const AddButton = () => {
             return;
         }
 
+        const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+        const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+
         // Calculate center relative to current canvas view
-        const spawnX = Math.round((window.innerWidth / 2 - canvasOffset.x) / zoom) - 150;
-        const spawnY = Math.round((window.innerHeight / 2 - canvasOffset.y) / zoom) - 120;
+        const spawnX = Math.round((viewportWidth / 2 - canvasOffset.x) / zoom) - 150;
+        const spawnY = Math.round((viewportHeight / 2 - canvasOffset.y) / zoom) - 120;
 
         const tempId = `temp-${Date.now()}`;
         const optimisticNote = {
