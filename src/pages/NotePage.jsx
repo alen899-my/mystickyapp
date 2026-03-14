@@ -14,6 +14,8 @@ import Spinner from "../icons/Spinner";
 
 const normalizeNote = (note) => ({ ...note, $id: note.$id ?? note.id });
 const normalizeConnection = (connection) => ({ ...connection, $id: connection.$id ?? connection.id });
+const FAST_FALLBACK_POLL_MS = 2000;
+const BACKUP_POLL_MS = 12000;
 
 const NotesPage = () => {
     const {
@@ -45,6 +47,7 @@ const NotesPage = () => {
     const [copied, setCopied] = useState(false);
     const [copiedFlow, setCopiedFlow] = useState(false);
     const [notebookStatus, setNotebookStatus] = useState("checking");
+    const [realtimeConnected, setRealtimeConnected] = useState(false);
 
     const { showAlert, showConfirm } = useDialog();
     const navigate = useNavigate();
@@ -134,6 +137,7 @@ const NotesPage = () => {
         }
 
         setNotebookStatus("checking");
+        setCurrentNotebookId(String(notebookId));
 
         const resolveNotebook = async () => {
             try {
@@ -152,7 +156,6 @@ const NotesPage = () => {
                     return;
                 }
 
-                setCurrentNotebookId(String(notebookId));
                 setNotebookStatus("ready");
             }
         };
@@ -341,6 +344,10 @@ const NotesPage = () => {
             const socket = db.realtime.connectToNotebook(currentNotebookId);
             websocketRef.current = socket;
 
+            socket.onopen = () => {
+                setRealtimeConnected(true);
+            };
+
             socket.onmessage = (event) => {
                 try {
                     const payload = JSON.parse(event.data);
@@ -384,12 +391,14 @@ const NotesPage = () => {
             socket.onclose = () => {
                 if (!isActive) return;
 
+                setRealtimeConnected(false);
                 clearTimeout(websocketReconnectTimerRef.current);
                 websocketReconnectTimerRef.current = setTimeout(openSocket, 2000);
             };
 
             socket.onerror = (error) => {
                 console.error("Realtime socket error:", error);
+                setRealtimeConnected(false);
             };
         };
 
@@ -397,6 +406,7 @@ const NotesPage = () => {
 
         return () => {
             isActive = false;
+            setRealtimeConnected(false);
             clearTimeout(websocketReconnectTimerRef.current);
             websocketRef.current?.close();
             websocketRef.current = null;
@@ -448,9 +458,12 @@ const NotesPage = () => {
         };
 
         pollNotes();
-        const interval = setInterval(pollNotes, 6000);
+        const interval = setInterval(
+            pollNotes,
+            realtimeConnected ? BACKUP_POLL_MS : FAST_FALLBACK_POLL_MS,
+        );
         return () => clearInterval(interval);
-    }, [currentNotebookId, setNotes]);
+    }, [currentNotebookId, realtimeConnected, setNotes]);
 
     useEffect(() => {
         if (!currentNotebookId) return undefined;
@@ -467,9 +480,12 @@ const NotesPage = () => {
         };
 
         pollConnections();
-        const interval = setInterval(pollConnections, 6000);
+        const interval = setInterval(
+            pollConnections,
+            realtimeConnected ? BACKUP_POLL_MS : FAST_FALLBACK_POLL_MS,
+        );
         return () => clearInterval(interval);
-    }, [currentNotebookId, setConnections]);
+    }, [currentNotebookId, realtimeConnected, setConnections]);
 
     useEffect(() => {
         if (!selectedConnectionId) return undefined;

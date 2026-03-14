@@ -8,7 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 import uvicorn
 import os
 from dotenv import load_dotenv
@@ -30,6 +30,16 @@ from api.auth import create_access_token, get_current_user, get_password_hash, g
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+RUNTIME_INDEX_STATEMENTS = [
+    "CREATE INDEX IF NOT EXISTS ix_notebooks_owner_id ON notebooks (owner_id)",
+    "CREATE INDEX IF NOT EXISTS ix_notes_owner_id ON notes (owner_id)",
+    "CREATE INDEX IF NOT EXISTS ix_notes_notebook_id ON notes (notebook_id)",
+    "CREATE INDEX IF NOT EXISTS ix_connections_notebook_id ON connections (notebook_id)",
+    "CREATE INDEX IF NOT EXISTS ix_connections_source_note_id ON connections (source_note_id)",
+    "CREATE INDEX IF NOT EXISTS ix_connections_target_note_id ON connections (target_note_id)",
+    "CREATE INDEX IF NOT EXISTS ix_connections_notebook_source_target ON connections (notebook_id, source_note_id, target_note_id)",
+]
 
 
 class NotebookRealtimeManager:
@@ -77,16 +87,29 @@ class NotebookRealtimeManager:
 realtime_manager = NotebookRealtimeManager()
 
 
+def ensure_runtime_indexes():
+    with engine.begin() as connection:
+        for statement in RUNTIME_INDEX_STATEMENTS:
+            connection.execute(text(statement))
+
+
+ensure_runtime_indexes()
+
+
+def get_accessible_notebook_query(db: Session, notebook_id: int, user_id: int):
+    return db.query(Notebook).filter(
+        Notebook.id == notebook_id,
+        or_(
+            Notebook.owner_id == user_id,
+            Notebook.members.any(User.id == user_id),
+        ),
+    )
+
+
 def has_notebook_access(db: Session, notebook_id: int, user_id: int):
-    is_owner = db.query(Notebook).filter(
-        Notebook.id == notebook_id,
-        Notebook.owner_id == user_id,
-    ).first()
-    is_member = db.query(Notebook).join(Notebook.members).filter(
-        Notebook.id == notebook_id,
-        User.id == user_id,
-    ).first()
-    return bool(is_owner or is_member)
+    return db.query(
+        get_accessible_notebook_query(db, notebook_id, user_id).exists()
+    ).scalar()
 
 
 def emit_notebook_event(notebook_id: int, event_type: str, **payload):
@@ -179,12 +202,16 @@ def get_notebooks(current_user: User = Depends(get_current_user), db: Session = 
 
 @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
 def get_notebook(notebook_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    notebook = db.query(Notebook).options(joinedload(Notebook.owner)).filter(Notebook.id == notebook_id).first()
+    notebook = (
+        get_accessible_notebook_query(db, notebook_id, current_user.id)
+        .options(joinedload(Notebook.owner))
+        .first()
+    )
 
     if not notebook:
-        raise HTTPException(status_code=404, detail="Notebook not found")
-
-    if notebook.owner_id != current_user.id and current_user not in notebook.members:
+        notebook_exists = db.query(Notebook.id).filter(Notebook.id == notebook_id).first()
+        if not notebook_exists:
+            raise HTTPException(status_code=404, detail="Notebook not found")
         raise HTTPException(status_code=403, detail="Access denied")
 
     return notebook
@@ -332,7 +359,13 @@ def get_notes_for_notebook(notebook_id: int, current_user: User = Depends(get_cu
     if not has_notebook_access(db, notebook_id, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
         
-    return db.query(Note).options(joinedload(Note.owner)).filter(Note.notebook_id == notebook_id).all()
+    return (
+        db.query(Note)
+        .options(joinedload(Note.owner))
+        .filter(Note.notebook_id == notebook_id)
+        .order_by(Note.created_at.desc(), Note.id.desc())
+        .all()
+    )
 
 @app.post("/notes", response_model=NoteResponse)
 def create_note(note: NoteCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

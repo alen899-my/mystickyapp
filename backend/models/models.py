@@ -30,7 +30,7 @@ class Notebook(Base):
     __tablename__ = "notebooks"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner_id = Column(Integer, ForeignKey("users.id"), index=True)
     invite_code = Column(String, unique=True, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
@@ -48,8 +48,8 @@ class Note(Base):
     body = Column(Text, nullable=True)
     colors = Column(Text, nullable=True)
     position = Column(Text, nullable=True)
-    owner_id = Column(Integer, ForeignKey("users.id"))
-    notebook_id = Column(Integer, ForeignKey("notebooks.id"))
+    owner_id = Column(Integer, ForeignKey("users.id"), index=True)
+    notebook_id = Column(Integer, ForeignKey("notebooks.id"), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="notes")
@@ -58,9 +58,9 @@ class Note(Base):
 class Connection(Base):
     __tablename__ = "connections"
     id = Column(Integer, primary_key=True, index=True)
-    notebook_id = Column(Integer, ForeignKey("notebooks.id"))
-    source_note_id = Column(Integer, ForeignKey("notes.id"))
-    target_note_id = Column(Integer, ForeignKey("notes.id"))
+    notebook_id = Column(Integer, ForeignKey("notebooks.id"), index=True)
+    source_note_id = Column(Integer, ForeignKey("notes.id"), index=True)
+    target_note_id = Column(Integer, ForeignKey("notes.id"), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     notebook = relationship("Notebook", back_populates="connections")

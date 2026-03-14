@@ -22,13 +22,11 @@ const Color = ({ color, onSelect }) => {
                 return;
             }
 
-            const currentNoteIndex = notes.findIndex(
-                (note) => note.cid === selectedNote.cid || note.$id === selectedNote.$id
-            );
+            const selectedNoteKey = getNoteKey(selectedNote);
+            const targetNote = notes.find((note) => getNoteKey(note) === selectedNoteKey);
 
-            if (currentNoteIndex === -1) return;
+            if (!targetNote) return;
 
-            const targetNote = notes[currentNoteIndex];
             const newColorString = JSON.stringify(color);
 
             // 4. Update the local state so the UI changes immediately

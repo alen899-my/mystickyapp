@@ -5,6 +5,8 @@ import { autoGrow, setZIndex, bodyParser, getContrastColor } from "../utils/util
 import { Link2, Loader2, Trash2, Unlink2 } from "lucide-react";
 import { NoteContext } from "../context/NotesContext";
 
+const BODY_SAVE_DELAY_MS = 450;
+
 const NoteCard = ({ note }) => {
     const cardRef = useRef(null);
     const textAreaRef = useRef(null);
@@ -190,7 +192,7 @@ const NoteCard = ({ note }) => {
         clearTimeout(bodySaveTimerRef.current);
         bodySaveTimerRef.current = setTimeout(() => {
             persistBody(nextBody);
-        }, 1500);
+        }, BODY_SAVE_DELAY_MS);
     };
 
     const handleBodyChange = (event) => {
