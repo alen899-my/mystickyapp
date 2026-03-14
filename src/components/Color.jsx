@@ -6,8 +6,10 @@ import { useDialog } from "../context/DialogContext";
 
 const Color = ({ color, onSelect }) => {
     // 1. Add 'notes' and 'setNotes' to the context destructuring
-    const { selectedNote, notes, setNotes } = useContext(NoteContext);
+    const { selectedNote, notes, setNotes, getNoteKey } = useContext(NoteContext);
     const { showAlert } = useDialog();
+
+    const matchesTargetNote = (candidate, targetNote) => getNoteKey(candidate) === getNoteKey(targetNote);
 
     const changeColor = async () => {
         try {
@@ -30,7 +32,7 @@ const Color = ({ color, onSelect }) => {
             const newColorString = JSON.stringify(color);
 
             // 4. Update the local state so the UI changes immediately
-            setNotes(prev => prev.map(n => n.cid === targetNote.cid ? {
+            setNotes(prev => prev.map(n => matchesTargetNote(n, targetNote) ? {
                 ...n,
                 colors: newColorString,
                 __localEdit: Date.now()
@@ -41,7 +43,7 @@ const Color = ({ color, onSelect }) => {
                 let latestId = targetNote.$id;
                 // Peek at latest state to get potential real ID
                 setNotes(prev => {
-                    const latestNote = prev.find(n => n.cid === targetNote.cid);
+                    const latestNote = prev.find(n => matchesTargetNote(n, targetNote));
                     if (latestNote) latestId = latestNote.$id;
                     return prev;
                 });
