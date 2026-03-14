@@ -1,16 +1,21 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+import asyncio
+from collections import defaultdict
+from concurrent.futures import Future
+from typing import List
+
+from fastapi import FastAPI, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
-from typing import List
 import uvicorn
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from database.db import engine, get_db, Base
+from database.db import engine, get_db, Base, SessionLocal
 from models.models import User, Note, Notebook, Connection
 from schemas.schemas import (
     UserCreate, UserResponse, 
@@ -20,11 +25,76 @@ from schemas.schemas import (
     Token
 )
 
-from api.auth import create_access_token, get_current_user, get_password_hash, verify_password
+from api.auth import create_access_token, get_current_user, get_password_hash, get_user_from_token, verify_password
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+
+class NotebookRealtimeManager:
+    def __init__(self):
+        self.connections = defaultdict(set)
+        self.loop = None
+
+    async def connect(self, notebook_id: int, websocket: WebSocket):
+        self.loop = asyncio.get_running_loop()
+        await websocket.accept()
+        self.connections[notebook_id].add(websocket)
+
+    def disconnect(self, notebook_id: int, websocket: WebSocket):
+        notebook_connections = self.connections.get(notebook_id)
+        if not notebook_connections:
+            return
+
+        notebook_connections.discard(websocket)
+        if not notebook_connections:
+            self.connections.pop(notebook_id, None)
+
+    async def broadcast(self, notebook_id: int, payload: dict):
+        notebook_connections = list(self.connections.get(notebook_id, []))
+        disconnected = []
+
+        for websocket in notebook_connections:
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                disconnected.append(websocket)
+
+        for websocket in disconnected:
+            self.disconnect(notebook_id, websocket)
+
+    def broadcast_from_sync(self, notebook_id: int, payload: dict):
+        if self.loop is None:
+            return None
+
+        return asyncio.run_coroutine_threadsafe(
+            self.broadcast(notebook_id, payload),
+            self.loop,
+        )
+
+
+realtime_manager = NotebookRealtimeManager()
+
+
+def has_notebook_access(db: Session, notebook_id: int, user_id: int):
+    is_owner = db.query(Notebook).filter(
+        Notebook.id == notebook_id,
+        Notebook.owner_id == user_id,
+    ).first()
+    is_member = db.query(Notebook).join(Notebook.members).filter(
+        Notebook.id == notebook_id,
+        User.id == user_id,
+    ).first()
+    return bool(is_owner or is_member)
+
+
+def emit_notebook_event(notebook_id: int, event_type: str, **payload):
+    serialized_payload = jsonable_encoder({"type": event_type, **payload})
+    future = realtime_manager.broadcast_from_sync(notebook_id, serialized_payload)
+
+    if isinstance(future, Future):
+        future.add_done_callback(lambda done: done.exception())
 
 # CORS — read allowed origins from env var (comma-separated)
 # e.g. ALLOWED_ORIGINS="https://mystickyapp.vercel.app,http://localhost:5173"
@@ -41,6 +111,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.websocket("/ws/notebooks/{notebook_id}")
+async def notebook_realtime_socket(
+    websocket: WebSocket,
+    notebook_id: int,
+    token: str = Query(...),
+):
+    db = SessionLocal()
+
+    try:
+        current_user = get_user_from_token(token, db)
+
+        if not has_notebook_access(db, notebook_id, current_user.id):
+            await websocket.close(code=4403)
+            return
+
+        await realtime_manager.connect(notebook_id, websocket)
+
+        while True:
+            await websocket.receive_text()
+    except HTTPException:
+        await websocket.close(code=4401)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        realtime_manager.disconnect(notebook_id, websocket)
+        db.close()
 
 # Auth Routes
 @app.post("/signup", response_model=UserResponse)
@@ -78,6 +176,18 @@ def get_notebooks(current_user: User = Depends(get_current_user), db: Session = 
     # Get notebooks where user is a member
     joined = db.query(Notebook).options(joinedload(Notebook.owner)).join(Notebook.members).filter(User.id == current_user.id).all()
     return list(set(owned + joined))
+
+@app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
+def get_notebook(notebook_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    notebook = db.query(Notebook).options(joinedload(Notebook.owner)).filter(Notebook.id == notebook_id).first()
+
+    if not notebook:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+
+    if notebook.owner_id != current_user.id and current_user not in notebook.members:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return notebook
 
 @app.post("/notebooks", response_model=NotebookResponse)
 def create_notebook(notebook: NotebookCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -159,26 +269,14 @@ def delete_notebook(notebook_id: int, current_user: User = Depends(get_current_u
 
 @app.get("/notebooks/{notebook_id}/connections", response_model=List[ConnectionResponse])
 def get_connections_for_notebook(notebook_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    is_owner = db.query(Notebook).filter(Notebook.id == notebook_id, Notebook.owner_id == current_user.id).first()
-    is_member = db.query(Notebook).join(Notebook.members).filter(Notebook.id == notebook_id, User.id == current_user.id).first()
-
-    if not is_owner and not is_member:
+    if not has_notebook_access(db, notebook_id, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     return db.query(Connection).filter(Connection.notebook_id == notebook_id).all()
 
 @app.post("/connections", response_model=ConnectionResponse)
 def create_connection(connection: ConnectionCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    is_owner = db.query(Notebook).filter(
-        Notebook.id == connection.notebook_id,
-        Notebook.owner_id == current_user.id,
-    ).first()
-    is_member = db.query(Notebook).join(Notebook.members).filter(
-        Notebook.id == connection.notebook_id,
-        User.id == current_user.id,
-    ).first()
-
-    if not is_owner and not is_member:
+    if not has_notebook_access(db, connection.notebook_id, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied to this notebook")
 
     if connection.source_note_id == connection.target_note_id:
@@ -209,6 +307,7 @@ def create_connection(connection: ConnectionCreate, current_user: User = Depends
     db.add(db_connection)
     db.commit()
     db.refresh(db_connection)
+    emit_notebook_event(connection.notebook_id, "connection_created", connection=db_connection)
     return db_connection
 
 @app.delete("/connections/{connection_id}")
@@ -217,30 +316,20 @@ def delete_connection(connection_id: int, current_user: User = Depends(get_curre
     if not db_connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    is_owner = db.query(Notebook).filter(
-        Notebook.id == db_connection.notebook_id,
-        Notebook.owner_id == current_user.id,
-    ).first()
-    is_member = db.query(Notebook).join(Notebook.members).filter(
-        Notebook.id == db_connection.notebook_id,
-        User.id == current_user.id,
-    ).first()
-
-    if not is_owner and not is_member:
+    if not has_notebook_access(db, db_connection.notebook_id, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
 
+    notebook_id = db_connection.notebook_id
     db.delete(db_connection)
     db.commit()
+    emit_notebook_event(notebook_id, "connection_deleted", connection_id=connection_id)
     return {"message": "Connection deleted"}
 
 # Note Routes
 @app.get("/notebooks/{notebook_id}/notes", response_model=List[NoteResponse])
 def get_notes_for_notebook(notebook_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Check if owner OR member
-    is_owner = db.query(Notebook).filter(Notebook.id == notebook_id, Notebook.owner_id == current_user.id).first()
-    is_member = db.query(Notebook).join(Notebook.members).filter(Notebook.id == notebook_id, User.id == current_user.id).first()
-    
-    if not is_owner and not is_member:
+    if not has_notebook_access(db, notebook_id, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
         
     return db.query(Note).options(joinedload(Note.owner)).filter(Note.notebook_id == notebook_id).all()
@@ -248,17 +337,16 @@ def get_notes_for_notebook(notebook_id: int, current_user: User = Depends(get_cu
 @app.post("/notes", response_model=NoteResponse)
 def create_note(note: NoteCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Check access to notebook
-    is_owner = db.query(Notebook).filter(Notebook.id == note.notebook_id, Notebook.owner_id == current_user.id).first()
-    is_member = db.query(Notebook).join(Notebook.members).filter(Notebook.id == note.notebook_id, User.id == current_user.id).first()
-    
-    if not is_owner and not is_member:
+    if not has_notebook_access(db, note.notebook_id, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied to this notebook")
     
     db_note = Note(**note.dict(), owner_id=current_user.id)
     db.add(db_note)
     db.commit()
     db.refresh(db_note)
-    return db.query(Note).options(joinedload(Note.owner)).filter(Note.id == db_note.id).first()
+    full_note = db.query(Note).options(joinedload(Note.owner)).filter(Note.id == db_note.id).first()
+    emit_notebook_event(note.notebook_id, "note_created", note=full_note)
+    return full_note
 
 @app.patch("/notes/{note_id}", response_model=NoteResponse)
 def update_note(note_id: int, note: NoteUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -268,12 +356,7 @@ def update_note(note_id: int, note: NoteUpdate, current_user: User = Depends(get
     
     # Check if user has access to the notebook this note belongs to
     notebook_id = db_note.notebook_id
-    is_owner = db.query(Notebook).filter(Notebook.id == notebook_id, Notebook.owner_id == current_user.id).first()
-    is_member = db.query(Notebook).join(Notebook.members).filter(Notebook.id == notebook_id, User.id == current_user.id).first()
-    
-    # Only owner of note OR someone with notebook access can update? 
-    # Usually collaborative means anyone with notebook access can update.
-    if not (is_owner or is_member):
+    if not has_notebook_access(db, notebook_id, current_user.id):
          raise HTTPException(status_code=403, detail="Access denied")
 
     update_data = note.dict(exclude_unset=True)
@@ -282,7 +365,9 @@ def update_note(note_id: int, note: NoteUpdate, current_user: User = Depends(get
     
     db.commit()
     db.refresh(db_note)
-    return db.query(Note).options(joinedload(Note.owner)).filter(Note.id == note_id).first()
+    full_note = db.query(Note).options(joinedload(Note.owner)).filter(Note.id == note_id).first()
+    emit_notebook_event(notebook_id, "note_updated", note=full_note)
+    return full_note
 
 @app.delete("/notes/{note_id}")
 def delete_note(note_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -297,6 +382,16 @@ def delete_note(note_id: int, current_user: User = Depends(get_current_user), db
     if not is_note_owner and not is_notebook_owner:
         raise HTTPException(status_code=403, detail="Access denied")
 
+    related_connection_ids = [
+        connection_id
+        for (connection_id,) in db.query(Connection.id).filter(
+            or_(
+                Connection.source_note_id == note_id,
+                Connection.target_note_id == note_id,
+            )
+        ).all()
+    ]
+
     db.query(Connection).filter(
         or_(
             Connection.source_note_id == note_id,
@@ -304,8 +399,15 @@ def delete_note(note_id: int, current_user: User = Depends(get_current_user), db
         )
     ).delete(synchronize_session=False)
 
+    notebook_id = db_note.notebook_id
     db.delete(db_note)
     db.commit()
+    emit_notebook_event(
+        notebook_id,
+        "note_deleted",
+        note_id=note_id,
+        removed_connection_ids=related_connection_ids,
+    )
     return {"message": "Note deleted"}
 
 @app.get("/me", response_model=UserResponse)

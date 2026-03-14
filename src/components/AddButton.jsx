@@ -50,21 +50,43 @@ const AddButton = () => {
             const response = await db.notes.create(payload);
             
             // 3. Replace temp note with real data but KEEP the CID for stable key
-            setNotes((prevState) => 
-                prevState.map(n => {
+            setNotes((prevState) => {
+                const existingRealNote = prevState.find(n => String(n.$id) === String(response.$id));
+
+                if (existingRealNote) {
+                    return prevState
+                        .filter(n => n.cid !== tempId)
+                        .map(n => {
+                            if (String(n.$id) !== String(response.$id)) {
+                                return n;
+                            }
+
+                            return {
+                                ...n,
+                                ...response,
+                                cid: n.cid || tempId,
+                                body: n.__localEdit ? n.body : response.body,
+                                position: n.__localEdit ? n.position : response.position,
+                                colors: n.__localEdit ? n.colors : response.colors,
+                                __localEdit: n.__localEdit || undefined,
+                            };
+                        });
+                }
+
+                return prevState.map(n => {
                     if (n.cid === tempId) {
-                        return { 
-                            ...response, 
+                        return {
+                            ...response,
                             cid: tempId,
                             body: n.__localEdit ? n.body : response.body,
                             position: n.__localEdit ? n.position : response.position,
                             colors: n.__localEdit ? n.colors : response.colors,
-                            __localEdit: n.__localEdit || undefined
+                            __localEdit: n.__localEdit || undefined,
                         };
                     }
                     return n;
-                })
-            );
+                });
+            });
         } catch (error) {
             // Rollback on failure
             setNotes((prevState) => prevState.filter(n => n.$id !== tempId));

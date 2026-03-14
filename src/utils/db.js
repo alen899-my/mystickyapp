@@ -1,4 +1,5 @@
 const API_ENDPOINT = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+const REALTIME_ENDPOINT = (import.meta.env.VITE_WS_URL || API_ENDPOINT.replace(/^http/i, "ws")).replace(/\/$/, "");
 
 const db = {
     notebooks: {
@@ -7,6 +8,34 @@ const db = {
             const response = await fetch(`${API_ENDPOINT}/notebooks`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
+            if (response.status === 401) {
+                localStorage.removeItem("token");
+                window.location.replace("/login");
+                return [];
+            }
+            return await response.json();
+        },
+        get: async (id) => {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_ENDPOINT}/notebooks/${id}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+
+            if (response.status === 401) {
+                localStorage.removeItem("token");
+                window.location.replace("/login");
+                const error = new Error("Unauthorized");
+                error.status = 401;
+                throw error;
+            }
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                const error = new Error(data.detail || "Could not load notebook");
+                error.status = response.status;
+                throw error;
+            }
+
             return await response.json();
         },
         create: async (name) => {
@@ -205,6 +234,14 @@ const db = {
             });
             return response;
         }
+    },
+    realtime: {
+        connectToNotebook: (notebookId) => {
+            const token = localStorage.getItem("token");
+            return new WebSocket(
+                `${REALTIME_ENDPOINT}/ws/notebooks/${notebookId}?token=${encodeURIComponent(token || "")}`
+            );
+        },
     }
 };
 

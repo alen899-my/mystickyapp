@@ -12,6 +12,9 @@ import { bodyParser } from "../utils/utils";
 import NotFoundPage from "./NotFoundPage";
 import Spinner from "../icons/Spinner";
 
+const normalizeNote = (note) => ({ ...note, $id: note.$id ?? note.id });
+const normalizeConnection = (connection) => ({ ...connection, $id: connection.$id ?? connection.id });
+
 const NotesPage = () => {
     const {
         notes,
@@ -54,6 +57,47 @@ const NotesPage = () => {
 
     const lastPinchDistRef = useRef(null);
     const lastPinchMidRef = useRef(null);
+    const websocketRef = useRef(null);
+    const websocketReconnectTimerRef = useRef(null);
+
+    const mergeIncomingNote = (previousNotes, incomingNote) => {
+        const normalizedNote = normalizeNote(incomingNote);
+        const incomingId = String(normalizedNote.$id);
+        const existingIndex = previousNotes.findIndex(note => String(note.$id) === incomingId);
+
+        if (existingIndex === -1) {
+            return [normalizedNote, ...previousNotes];
+        }
+
+        const existingNote = previousNotes[existingIndex];
+        const mergedNote = existingNote.cid
+            ? { ...normalizedNote, cid: existingNote.cid }
+            : normalizedNote;
+
+        if (existingNote.__localEdit && Date.now() - existingNote.__localEdit < 2000) {
+            mergedNote.position = existingNote.position;
+            mergedNote.body = existingNote.body;
+            mergedNote.colors = existingNote.colors;
+            mergedNote.__localEdit = existingNote.__localEdit;
+        }
+
+        return previousNotes.map((note, index) => (
+            index === existingIndex ? mergedNote : note
+        ));
+    };
+
+    const upsertIncomingConnection = (previousConnections, incomingConnection) => {
+        const normalizedConnection = normalizeConnection(incomingConnection);
+        const connectionId = String(normalizedConnection.id);
+
+        if (previousConnections.some(connection => String(connection.id) === connectionId)) {
+            return previousConnections.map(connection => (
+                String(connection.id) === connectionId ? normalizedConnection : connection
+            ));
+        }
+
+        return [...previousConnections, normalizedConnection];
+    };
 
     useEffect(() => {
         let isMounted = true;
@@ -69,17 +113,8 @@ const NotesPage = () => {
 
         const resolveNotebook = async () => {
             try {
-                const result = await db.notebooks.list();
+                await db.notebooks.get(notebookId);
                 if (!isMounted) return;
-
-                const accessibleNotebooks = Array.isArray(result) ? result : [];
-                const hasNotebookAccess = accessibleNotebooks.some(notebook => Number(notebook.id) === notebookId);
-
-                if (!hasNotebookAccess) {
-                    setCurrentNotebookId(null);
-                    setNotebookStatus("not-found");
-                    return;
-                }
 
                 setCurrentNotebookId(String(notebookId));
                 setNotebookStatus("ready");
@@ -87,8 +122,14 @@ const NotesPage = () => {
                 console.error("Notebook resolve error:", error);
                 if (!isMounted) return;
 
-                setCurrentNotebookId(null);
-                setNotebookStatus("not-found");
+                if (error?.status === 403 || error?.status === 404) {
+                    setCurrentNotebookId(null);
+                    setNotebookStatus("not-found");
+                    return;
+                }
+
+                setCurrentNotebookId(String(notebookId));
+                setNotebookStatus("ready");
             }
         };
 
@@ -256,8 +297,83 @@ const NotesPage = () => {
     useEffect(() => {
         return () => {
             clearTimeout(copyFlowTimerRef.current);
+            clearTimeout(websocketReconnectTimerRef.current);
+            websocketRef.current?.close();
         };
     }, []);
+
+    useEffect(() => {
+        if (notebookStatus !== "ready" || !currentNotebookId) return undefined;
+
+        let isActive = true;
+
+        const openSocket = () => {
+            if (!isActive) return;
+
+            const socket = db.realtime.connectToNotebook(currentNotebookId);
+            websocketRef.current = socket;
+
+            socket.onmessage = (event) => {
+                try {
+                    const payload = JSON.parse(event.data);
+
+                    switch (payload.type) {
+                        case "note_created":
+                        case "note_updated":
+                            if (payload.note) {
+                                setNotes(prev => mergeIncomingNote(prev, payload.note));
+                            }
+                            break;
+                        case "note_deleted":
+                            setNotes(prev => prev.filter(note => String(note.$id) !== String(payload.note_id)));
+                            setConnections(prev => prev.filter(connection => {
+                                if (Array.isArray(payload.removed_connection_ids) && payload.removed_connection_ids.length) {
+                                    return !payload.removed_connection_ids.includes(connection.id);
+                                }
+
+                                return (
+                                    String(connection.source_note_id) !== String(payload.note_id) &&
+                                    String(connection.target_note_id) !== String(payload.note_id)
+                                );
+                            }));
+                            break;
+                        case "connection_created":
+                            if (payload.connection) {
+                                setConnections(prev => upsertIncomingConnection(prev, payload.connection));
+                            }
+                            break;
+                        case "connection_deleted":
+                            setConnections(prev => prev.filter(connection => String(connection.id) !== String(payload.connection_id)));
+                            break;
+                        default:
+                            break;
+                    }
+                } catch (error) {
+                    console.error("Realtime message parse error:", error);
+                }
+            };
+
+            socket.onclose = () => {
+                if (!isActive) return;
+
+                clearTimeout(websocketReconnectTimerRef.current);
+                websocketReconnectTimerRef.current = setTimeout(openSocket, 2000);
+            };
+
+            socket.onerror = (error) => {
+                console.error("Realtime socket error:", error);
+            };
+        };
+
+        openSocket();
+
+        return () => {
+            isActive = false;
+            clearTimeout(websocketReconnectTimerRef.current);
+            websocketRef.current?.close();
+            websocketRef.current = null;
+        };
+    }, [currentNotebookId, notebookStatus, setConnections, setNotes]);
 
     useEffect(() => {
         if (!currentNotebookId) return undefined;
